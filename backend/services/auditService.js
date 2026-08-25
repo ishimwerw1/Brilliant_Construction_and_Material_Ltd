@@ -1,0 +1,78 @@
+const AuditLog = require('../models/AuditLog');
+
+const ACTIONS = {
+  LOGIN: 'LOGIN',
+  LOGOUT: 'LOGOUT',
+  LOGIN_FAILED: 'LOGIN_FAILED',
+  PASSWORD_CHANGE: 'PASSWORD_CHANGE',
+  PASSWORD_RESET: 'PASSWORD_RESET',
+
+  PRODUCT_CREATE: 'PRODUCT_CREATE',
+  PRODUCT_UPDATE: 'PRODUCT_UPDATE',
+  PRODUCT_DELETE: 'PRODUCT_DELETE',
+
+  CATEGORY_CREATE: 'CATEGORY_CREATE',
+  CATEGORY_UPDATE: 'CATEGORY_UPDATE',
+  CATEGORY_DELETE: 'CATEGORY_DELETE',
+
+  SUPPLIER_CREATE: 'SUPPLIER_CREATE',
+  SUPPLIER_UPDATE: 'SUPPLIER_UPDATE',
+  SUPPLIER_DELETE: 'SUPPLIER_DELETE',
+
+  CUSTOMER_CREATE: 'CUSTOMER_CREATE',
+  CUSTOMER_UPDATE: 'CUSTOMER_UPDATE',
+  CUSTOMER_DELETE: 'CUSTOMER_DELETE',
+
+  STOCK_IN: 'STOCK_IN',
+  STOCK_OUT: 'STOCK_OUT',
+  STOCK_ADJUSTMENT: 'STOCK_ADJUSTMENT',
+
+  SALE_CREATE: 'SALE_CREATE',
+  SALE_CANCEL: 'SALE_CANCEL',
+
+  ORDER_CREATE: 'ORDER_CREATE',
+  ORDER_CANCEL: 'ORDER_CANCEL',
+
+  PAYMENT_CREATE: 'PAYMENT_CREATE',
+  LOAN_CREATE: 'LOAN_CREATE',
+  LOAN_REPAYMENT: 'LOAN_REPAYMENT',
+  LOAN_CANCEL: 'LOAN_CANCEL',
+
+  USER_CREATE: 'USER_CREATE',
+  USER_UPDATE: 'USER_UPDATE',
+  USER_DELETE: 'USER_DELETE',
+
+  ROLE_CREATE: 'ROLE_CREATE',
+  ROLE_UPDATE: 'ROLE_UPDATE',
+  ROLE_DELETE: 'ROLE_DELETE',
+
+  SETTINGS_UPDATE: 'SETTINGS_UPDATE',
+
+  BACKUP_CREATE: 'BACKUP_CREATE',
+  BACKUP_RESTORE: 'BACKUP_RESTORE',
+  BACKUP_DOWNLOAD: 'BACKUP_DOWNLOAD',
+  BACKUP_DELETE: 'BACKUP_DELETE'
+};
+
+const logAction = async ({ user, action, entity, entityId, description, details, session }) => {
+  try {
+    await AuditLog.create(
+      [
+        {
+          user: user?._id,
+          userName: user?.fullName || 'System',
+          action,
+          entity,
+          entityId,
+          description,
+          details
+        }
+      ],
+      { session }
+    );
+  } catch (err) {
+    console.error('Audit log failed:', err.message);
+  }
+};
+
+module.exports = { logAction, ACTIONS };
