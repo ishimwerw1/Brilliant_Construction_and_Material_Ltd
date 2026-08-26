@@ -49,7 +49,7 @@ export default function LoansReport() {
                 datasets: [{ data: data.byStatus.map((s) => s.count), backgroundColor: ['#1a6fb5', '#f9a825', '#1e7e46', '#c0392b', '#6c757d'], borderWidth: 0 }]
               },
               options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
-            }} height={80} />
+            }} height={25} />
           </Card>
         </Col>
         <Col lg={7}>
@@ -61,7 +61,7 @@ export default function LoansReport() {
                 datasets: [{ data: data.repaymentTrend.map((r) => r.total), backgroundColor: '#1e7e46', borderRadius: 4 }]
               },
               options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-            }} height={Math.max(120, data.repaymentTrend.length * 24)} />
+            }} height={25} />
           </Card>
         </Col>
       </Row>
@@ -70,7 +70,7 @@ export default function LoansReport() {
         <Col lg={6}>
           <Card body className="py-2">
             <Card.Title className="fs-6 fw-semibold mb-1">Status Breakdown</Card.Title>
-            <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+            <div style={{ maxHeight: 120, overflowY: 'auto' }}>
               <Table size="sm" hover className="mb-0">
                 <thead><tr><th>Status</th><th>Count</th><th>Outstanding</th></tr></thead>
                 <tbody>
@@ -89,7 +89,7 @@ export default function LoansReport() {
         <Col lg={6}>
           <Card body className="py-2">
             <Card.Title className="fs-6 fw-semibold mb-1"><Badge bg="" className="badge-soft-danger">OVERDUE</Badge> Overdue Loans</Card.Title>
-            <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+            <div style={{ maxHeight: 120, overflowY: 'auto' }}>
               <Table size="sm" hover responsive className="mb-0">
                 <thead><tr><th>Loan</th><th>Customer</th><th>Balance</th><th>Due</th></tr></thead>
                 <tbody>

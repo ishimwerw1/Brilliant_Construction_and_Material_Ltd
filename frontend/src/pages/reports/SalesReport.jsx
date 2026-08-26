@@ -73,7 +73,7 @@ export default function SalesReport() {
                 ]
               },
               options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } }
-            }} height={80} />
+            }} height={25} />
           </Card>
         </Col>
         <Col lg={4}>
@@ -85,7 +85,7 @@ export default function SalesReport() {
                 datasets: [{ data: data.byMethod.map((m) => m.total), backgroundColor: ['#1e7e46', '#1a6fb5', '#0d3b66', '#f9a825', '#6c757d'], borderWidth: 0 }]
               },
               options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
-            }} height={80} />
+            }} height={25} />
           </Card>
         </Col>
       </Row>
@@ -100,13 +100,13 @@ export default function SalesReport() {
                 datasets: [{ data: data.topProducts.map((p) => p.qtySold), backgroundColor: '#1a6fb5', borderRadius: 4 }]
               },
               options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-            }} height={Math.max(100, data.topProducts.length * 22)} />
+            }} height={25} />
           </Card>
         </Col>
         <Col lg={4}>
           <Card body className="py-2">
             <Card.Title className="fs-6 fw-semibold mb-1">Sales by Cashier</Card.Title>
-            <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+            <div style={{ maxHeight: 120, overflowY: 'auto' }}>
               <Table size="sm" hover className="mb-0">
                 <thead><tr><th>Cashier</th><th>Sales</th><th>Revenue</th></tr></thead>
                 <tbody>
@@ -122,7 +122,7 @@ export default function SalesReport() {
         <Col lg={4}>
           <Card body className="py-2">
             <Card.Title className="fs-6 fw-semibold mb-1">Sales by Category</Card.Title>
-            <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+            <div style={{ maxHeight: 120, overflowY: 'auto' }}>
               <Table size="sm" hover className="mb-0">
                 <thead><tr><th>Category</th><th>Qty</th><th>Revenue</th></tr></thead>
                 <tbody>
@@ -139,7 +139,7 @@ export default function SalesReport() {
 
       <Card body className="py-2">
         <Card.Title className="fs-6 fw-semibold mb-1">Daily Breakdown</Card.Title>
-        <div className="table-responsive" style={{ maxHeight: 200, overflowY: 'auto' }}>
+        <div className="table-responsive" style={{ maxHeight: 150, overflowY: 'auto' }}>
           <Table size="sm" striped hover className="mb-0">
             <thead><tr><th>Date</th><th>Sales Count</th><th>Revenue</th><th>Received</th></tr></thead>
             <tbody>
