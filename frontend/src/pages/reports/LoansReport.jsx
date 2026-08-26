@@ -39,68 +39,72 @@ export default function LoansReport() {
         <Col md={3}><StatCard icon="bi-alarm" label="Overdue Loans" value={data.overdueLoans.length} color="warning" /></Col>
       </Row>
 
-      <Row className="g-3 mb-4">
+      <Row className="g-2 mb-3">
         <Col lg={5}>
-          <Card body className="h-100">
-            <Card.Title className="fs-6 fw-semibold">Loans by Status</Card.Title>
+          <Card body className="h-100 py-2">
+            <Card.Title className="fs-6 fw-semibold mb-1">Loans by Status</Card.Title>
             <Chart type="doughnut" {...{
               data: {
                 labels: data.byStatus.map((s) => s._id.replace(/_/g, ' ')),
                 datasets: [{ data: data.byStatus.map((s) => s.count), backgroundColor: ['#1a6fb5', '#f9a825', '#1e7e46', '#c0392b', '#6c757d'], borderWidth: 0 }]
               },
               options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
-            }} />
+            }} height={80} />
           </Card>
         </Col>
         <Col lg={7}>
-          <Card body className="h-100">
-            <Card.Title className="fs-6 fw-semibold">Monthly Repayments</Card.Title>
+          <Card body className="h-100 py-2">
+            <Card.Title className="fs-6 fw-semibold mb-1">Monthly Repayments</Card.Title>
             <Chart type="bar" {...{
               data: {
                 labels: data.repaymentTrend.map((r) => r._id),
                 datasets: [{ data: data.repaymentTrend.map((r) => r.total), backgroundColor: '#1e7e46', borderRadius: 4 }]
               },
               options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-            }} height={Math.max(200, data.repaymentTrend.length * 40)} />
+            }} height={Math.max(120, data.repaymentTrend.length * 24)} />
           </Card>
         </Col>
       </Row>
 
-      <Row className="g-3">
+      <Row className="g-2">
         <Col lg={6}>
-          <Card body>
-            <Card.Title className="fs-6 fw-semibold">Status Breakdown</Card.Title>
-            <Table size="sm" hover className="mb-0">
-              <thead><tr><th>Status</th><th>Count</th><th>Outstanding</th></tr></thead>
-              <tbody>
-                {data.byStatus.map((s) => (
-                  <tr key={s._id}>
-                    <td><StatusBadge value={s._id} /></td>
-                    <td>{s.count}</td>
-                    <td>{formatMoney(s.amount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
+          <Card body className="py-2">
+            <Card.Title className="fs-6 fw-semibold mb-1">Status Breakdown</Card.Title>
+            <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+              <Table size="sm" hover className="mb-0">
+                <thead><tr><th>Status</th><th>Count</th><th>Outstanding</th></tr></thead>
+                <tbody>
+                  {data.byStatus.map((s) => (
+                    <tr key={s._id}>
+                      <td><StatusBadge value={s._id} /></td>
+                      <td>{s.count}</td>
+                      <td>{formatMoney(s.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
           </Card>
         </Col>
         <Col lg={6}>
-          <Card body>
-            <Card.Title className="fs-6 fw-semibold"><Badge bg="" className="badge-soft-danger">OVERDUE</Badge> Overdue Loans</Card.Title>
-            <Table size="sm" hover responsive className="mb-0">
-              <thead><tr><th>Loan</th><th>Customer</th><th>Balance</th><th>Due</th></tr></thead>
-              <tbody>
-                {data.overdueLoans.length === 0 && <tr><td colSpan={4} className="text-center text-muted py-3">No overdue loans</td></tr>}
-                {data.overdueLoans.map((l) => (
-                  <tr key={l._id}>
-                    <td><code style={{ fontSize: '0.72rem' }}>{l.loanNumber}</code></td>
-                    <td className="small">{l.customerName}<br /><small className="text-muted">{l.customerPhone}</small></td>
-                    <td className="fw-bold text-danger">{formatMoney(l.outstandingBalance)}</td>
-                    <td className="small">{new Date(l.dueDate).toLocaleDateString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
+          <Card body className="py-2">
+            <Card.Title className="fs-6 fw-semibold mb-1"><Badge bg="" className="badge-soft-danger">OVERDUE</Badge> Overdue Loans</Card.Title>
+            <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+              <Table size="sm" hover responsive className="mb-0">
+                <thead><tr><th>Loan</th><th>Customer</th><th>Balance</th><th>Due</th></tr></thead>
+                <tbody>
+                  {data.overdueLoans.length === 0 && <tr><td colSpan={4} className="text-center text-muted py-2">No overdue loans</td></tr>}
+                  {data.overdueLoans.map((l) => (
+                    <tr key={l._id}>
+                      <td><code style={{ fontSize: '0.72rem' }}>{l.loanNumber}</code></td>
+                      <td className="small">{l.customerName}<br /><small className="text-muted">{l.customerPhone}</small></td>
+                      <td className="fw-bold text-danger">{formatMoney(l.outstandingBalance)}</td>
+                      <td className="small">{new Date(l.dueDate).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
           </Card>
         </Col>
       </Row>

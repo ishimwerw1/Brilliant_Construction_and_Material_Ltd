@@ -60,10 +60,10 @@ export default function SalesReport() {
         <Col md={3}><StatCard icon="bi-cash-coin" label="Outstanding (Credit)" value={formatMoney(s.outstanding)} color="danger" sub={`Discounts given: ${formatMoney(s.discounts)}`} /></Col>
       </Row>
 
-      <Row className="g-3 mb-4">
+      <Row className="g-2 mb-3">
         <Col lg={8}>
-          <Card body>
-            <Card.Title className="fs-6 fw-semibold">Revenue by Day</Card.Title>
+          <Card body className="py-2">
+            <Card.Title className="fs-6 fw-semibold mb-1">Revenue by Day</Card.Title>
             <Chart type="line" {...{
               data: {
                 labels: data.byDay.map((d) => d._id),
@@ -73,69 +73,73 @@ export default function SalesReport() {
                 ]
               },
               options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } }
-            }} height={110} />
+            }} height={80} />
           </Card>
         </Col>
         <Col lg={4}>
-          <Card body className="h-100">
-            <Card.Title className="fs-6 fw-semibold">By Payment Method</Card.Title>
+          <Card body className="h-100 py-2">
+            <Card.Title className="fs-6 fw-semibold mb-1">By Payment Method</Card.Title>
             <Chart type="doughnut" {...{
               data: {
                 labels: data.byMethod.map((m) => m._id),
                 datasets: [{ data: data.byMethod.map((m) => m.total), backgroundColor: ['#1e7e46', '#1a6fb5', '#0d3b66', '#f9a825', '#6c757d'], borderWidth: 0 }]
               },
               options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
-            }} />
+            }} height={80} />
           </Card>
         </Col>
       </Row>
 
-      <Row className="g-3 mb-4">
+      <Row className="g-2 mb-3">
         <Col lg={4}>
-          <Card body>
-            <Card.Title className="fs-6 fw-semibold">Top Selling Products</Card.Title>
+          <Card body className="py-2">
+            <Card.Title className="fs-6 fw-semibold mb-1">Top Selling Products</Card.Title>
             <Chart type="bar" {...{
               data: {
                 labels: data.topProducts.map((p) => p.name.slice(0, 14)),
                 datasets: [{ data: data.topProducts.map((p) => p.qtySold), backgroundColor: '#1a6fb5', borderRadius: 4 }]
               },
               options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-            }} height={Math.max(180, data.topProducts.length * 36)} />
+            }} height={Math.max(100, data.topProducts.length * 22)} />
           </Card>
         </Col>
         <Col lg={4}>
-          <Card body>
-            <Card.Title className="fs-6 fw-semibold">Sales by Cashier</Card.Title>
-            <Table size="sm" hover className="mb-0">
-              <thead><tr><th>Cashier</th><th>Sales</th><th>Revenue</th></tr></thead>
-              <tbody>
-                {data.byCashier.length === 0 && <tr><td colSpan={3} className="text-center text-muted py-3">No data</td></tr>}
-                {data.byCashier.map((c) => (
-                  <tr key={c._id}><td>{c.name}</td><td>{c.count}</td><td>{formatMoney(c.revenue)}</td></tr>
-                ))}
-              </tbody>
-            </Table>
+          <Card body className="py-2">
+            <Card.Title className="fs-6 fw-semibold mb-1">Sales by Cashier</Card.Title>
+            <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+              <Table size="sm" hover className="mb-0">
+                <thead><tr><th>Cashier</th><th>Sales</th><th>Revenue</th></tr></thead>
+                <tbody>
+                  {data.byCashier.length === 0 && <tr><td colSpan={3} className="text-center text-muted py-2">No data</td></tr>}
+                  {data.byCashier.map((c) => (
+                    <tr key={c._id}><td>{c.name}</td><td>{c.count}</td><td>{formatMoney(c.revenue)}</td></tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
           </Card>
         </Col>
         <Col lg={4}>
-          <Card body>
-            <Card.Title className="fs-6 fw-semibold">Sales by Category</Card.Title>
-            <Table size="sm" hover className="mb-0">
-              <thead><tr><th>Category</th><th>Qty</th><th>Revenue</th></tr></thead>
-              <tbody>
-                {data.byCategory.length === 0 && <tr><td colSpan={3} className="text-center text-muted py-3">No data</td></tr>}
-                {data.byCategory.map((c) => (
-                  <tr key={c._id}><td><Badge bg="" className="badge-soft-primary">{c._id}</Badge></td><td>{c.qtySold}</td><td>{formatMoney(c.revenue)}</td></tr>
-                ))}
-              </tbody>
-            </Table>
+          <Card body className="py-2">
+            <Card.Title className="fs-6 fw-semibold mb-1">Sales by Category</Card.Title>
+            <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+              <Table size="sm" hover className="mb-0">
+                <thead><tr><th>Category</th><th>Qty</th><th>Revenue</th></tr></thead>
+                <tbody>
+                  {data.byCategory.length === 0 && <tr><td colSpan={3} className="text-center text-muted py-2">No data</td></tr>}
+                  {data.byCategory.map((c) => (
+                    <tr key={c._id}><td><Badge bg="" className="badge-soft-primary">{c._id}</Badge></td><td>{c.qtySold}</td><td>{formatMoney(c.revenue)}</td></tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
           </Card>
         </Col>
       </Row>
 
-      <Card body>
-        <Card.Title className="fs-6 fw-semibold">Daily Breakdown</Card.Title>
-        <div className="table-responsive" style={{ maxHeight: 320, overflowY: 'auto' }}>
+      <Card body className="py-2">
+        <Card.Title className="fs-6 fw-semibold mb-1">Daily Breakdown</Card.Title>
+        <div className="table-responsive" style={{ maxHeight: 200, overflowY: 'auto' }}>
           <Table size="sm" striped hover className="mb-0">
             <thead><tr><th>Date</th><th>Sales Count</th><th>Revenue</th><th>Received</th></tr></thead>
             <tbody>
