@@ -30,16 +30,69 @@ export default function Login() {
   return (
     <div className="login-wrapper">
       <style>{`
+        /* --- Animations Keyframes --- */
+        @keyframes cardFadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(20px) scale(0.98);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        @keyframes floatLogo {
+          0%, 100% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-8px);
+          }
+        }
+
+        @keyframes bgShift {
+          0% { background-position: 0% 0%; }
+          50% { background-position: 0% 100%; }
+          100% { background-position: 0% 0%; }
+        }
+
+        @keyframes slideInLeft {
+          from {
+            opacity: 0;
+            transform: translateX(-15px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+
+        @keyframes slideInRight {
+          from {
+            opacity: 0;
+            transform: translateX(15px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+
+        /* --- Page Background --- */
         .login-wrapper {
           min-height: 100vh;
           display: flex;
           align-items: center;
           justify-content: center;
-          background: linear-gradient(to bottom, #3b52f6 50%, #dce5fa 50%);
+          background: linear-gradient(180deg, #3b52f6 0%, #3b52f6 50%, #dce5fa 50%, #dce5fa 100%);
+          background-size: 100% 200%;
+          animation: bgShift 12s ease infinite;
           padding: 20px;
           font-family: system-ui, -apple-system, sans-serif;
         }
 
+        /* --- Card Container --- */
         .login-card-container {
           display: flex;
           width: 100%;
@@ -49,14 +102,17 @@ export default function Login() {
           border-radius: 24px;
           box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
           overflow: hidden;
+          animation: cardFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
+        /* --- Left Side: Form --- */
         .login-form-side {
           flex: 1;
           padding: 48px 40px;
           display: flex;
           flex-direction: column;
           justify-content: center;
+          animation: slideInLeft 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
         .login-title {
@@ -79,11 +135,12 @@ export default function Login() {
           padding: 12px 16px;
           font-size: 0.95rem;
           color: #2b2d42;
+          transition: all 0.25s ease;
         }
 
         .login-form-side input.form-control:focus {
           background-color: #ffffff;
-          box-shadow: 0 0 0 3px rgba(59, 82, 246, 0.15);
+          box-shadow: 0 0 0 4px rgba(59, 82, 246, 0.15);
           border-color: #3b52f6;
         }
 
@@ -94,13 +151,20 @@ export default function Login() {
           padding: 12px !important;
           font-weight: 600 !important;
           font-size: 1rem !important;
-          transition: background-color 0.2s ease !important;
+          transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease !important;
         }
 
         .custom-btn:hover {
           background-color: #2d41d9 !important;
+          transform: translateY(-2px);
+          box-shadow: 0 8px 20px rgba(59, 82, 246, 0.3);
         }
 
+        .custom-btn:active {
+          transform: translateY(0);
+        }
+
+        /* --- Right Side: Visual / Logo --- */
         .login-visual-side {
           flex: 1;
           background-color: #f4f6fb;
@@ -111,6 +175,7 @@ export default function Login() {
           justify-content: center;
           text-align: center;
           position: relative;
+          animation: slideInRight 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
         .logo-display-container {
@@ -121,9 +186,15 @@ export default function Login() {
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 10px 25px rgba(59, 82, 246, 0.1);
+          box-shadow: 0 10px 25px rgba(59, 82, 246, 0.12);
           margin-bottom: 24px;
           padding: 16px;
+          animation: floatLogo 4s ease-in-out infinite;
+          transition: transform 0.3s ease;
+        }
+
+        .logo-display-container:hover {
+          transform: scale(1.05);
         }
 
         .visual-logo {
@@ -147,6 +218,7 @@ export default function Login() {
           margin-bottom: 24px;
         }
 
+        /* Active Dots Animation */
         .visual-dots {
           display: flex;
           gap: 6px;
@@ -158,6 +230,7 @@ export default function Login() {
           height: 4px;
           background-color: #d0d7de;
           border-radius: 2px;
+          transition: background-color 0.3s ease, width 0.3s ease;
         }
 
         .dot.active {
@@ -242,7 +315,7 @@ export default function Login() {
           </div>
         </div>
 
-        {/* Right Side: Logo & App Details */}
+        {/* Right Side: Animated Logo & Info */}
         <div className="login-visual-side">
           <div className="logo-display-container">
             <img src="/logo.png" alt="logo" className="visual-logo" />
