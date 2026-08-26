@@ -15,14 +15,21 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+
 app.use(express.json({ limit: '3mb' }));
 
-// API routes
+// Health Check
 app.get('/api/health', (_req, res) => {
   res.json({ success: true, message: 'API is running', database: dbReady ? 'connected' : 'connecting' });
 });
+
 app.use('/api', apiLimiter);
+
+// Mounted both /auth and /api/auth so both backend routes work
+app.use('/auth', require('./routes/authRoutes'));
 app.use('/api/auth', require('./routes/authRoutes'));
+
+// Other API Routes
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/roles', require('./routes/roleRoutes'));
 app.use('/api/products', require('./routes/productRoutes'));
@@ -46,11 +53,8 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
-// Start the API even if the database is temporarily unreachable, and keep
-// retrying in the background so the app recovers on its own (e.g. after an
-// IP is whitelisted in Atlas or internet comes back) without a restart.
-const RETRY_MS = 10_000;
 let dbReady = false;
+const RETRY_MS = 10_000;
 
 const tryConnect = async () => {
   try {
