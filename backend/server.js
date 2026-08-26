@@ -8,7 +8,13 @@ const { apiLimiter } = require('./middleware/rateLimiter');
 
 const app = express();
 
-app.use(cors({ origin: process.env.CLIENT_URL?.split(',') || true, credentials: true }));
+const allowedOrigins = (process.env.CLIENT_URL || '').split(',').filter(Boolean);
+app.use(cors({
+  origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 app.use(express.json({ limit: '3mb' }));
 
 // API routes
