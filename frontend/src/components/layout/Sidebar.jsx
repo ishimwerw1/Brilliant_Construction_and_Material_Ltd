@@ -1,3 +1,4 @@
+// Sidebar.jsx
 import { Nav } from 'react-bootstrap'
 import { NavLink, Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
@@ -10,23 +11,23 @@ export default function Sidebar({ open, onClose }) {
   const Item = ({ to, icon, labelKey, end }) => (
     <NavLink to={to} end={end} className={({ isActive }) => `bcml-nav-link${isActive ? ' active' : ''}`} onClick={onClose}>
       <i className={`bi ${icon}`} />
-      <span>{t(labelKey)}</span>
+      <span className="text-truncate">{t(labelKey)}</span>
     </NavLink>
   )
 
-  const GroupLabel = ({ children }) => <div className="bcml-nav-group-label">{children}</div>
+  const GroupLabel = ({ children }) => <div className="bcml-nav-group-label text-truncate px-3 py-1">{children}</div>
 
   return (
-    <div className={`bcml-sidebar ${open ? 'show' : ''}`}>
-      <Link to="/dashboard" className="bcml-brand text-decoration-none" onClick={onClose}>
-        <img src="/logo.png" alt="logo" />
-        <div className="bcml-brand-text text-white">
-          <div className="title">Brilliant Construction</div>
-          <div className="subtitle">& Materials Ltd</div>
+    <div className={`bcml-sidebar ${open ? 'show' : ''} shadow-sm h-100 d-flex flex-column overflow-hidden`}>
+      <Link to="/dashboard" className="bcml-brand text-decoration-none d-flex align-items-center gap-2 p-3 flex-shrink-0" onClick={onClose}>
+        <img src="/logo.png" alt="logo" style={{ maxWidth: 36, height: 'auto' }} />
+        <div className="bcml-brand-text text-white overflow-hidden">
+          <div className="title text-truncate fw-bold lh-sm" style={{ fontSize: '0.9rem' }}>Brilliant Construction</div>
+          <div className="subtitle text-truncate text-white-50" style={{ fontSize: '0.75rem' }}>& Materials Ltd</div>
         </div>
       </Link>
 
-      <Nav className="flex-column pb-4">
+      <Nav className="flex-column pb-4 overflow-y-auto flex-grow-1 px-2">
         <Item to="/dashboard" icon="bi-speedometer2" labelKey="dashboard" end />
 
         {(hasPermission('products.read') || hasPermission('stock.read')) && (
