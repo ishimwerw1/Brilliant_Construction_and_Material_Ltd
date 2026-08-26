@@ -15,7 +15,6 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
-
 app.use(express.json({ limit: '3mb' }));
 
 // Health Check
@@ -25,27 +24,66 @@ app.get('/api/health', (_req, res) => {
 
 app.use('/api', apiLimiter);
 
-// Mounted both /auth and /api/auth so both backend routes work
+// ==========================================
+// DUAL ROUTE MOUNTING (Handles with/without /api)
+// ==========================================
+
+// Auth
 app.use('/auth', require('./routes/authRoutes'));
 app.use('/api/auth', require('./routes/authRoutes'));
 
-// Other API Routes
-app.use('/api/users', require('./routes/userRoutes'));
-app.use('/api/roles', require('./routes/roleRoutes'));
-app.use('/api/products', require('./routes/productRoutes'));
-app.use('/api/categories', require('./routes/categoryRoutes'));
-app.use('/api/suppliers', require('./routes/supplierRoutes'));
-app.use('/api/customers', require('./routes/customerRoutes'));
-app.use('/api/stock', require('./routes/stockRoutes'));
-app.use('/api/sales', require('./routes/saleRoutes'));
-app.use('/api/orders', require('./routes/orderRoutes'));
-app.use('/api/payments', require('./routes/paymentRoutes'));
-app.use('/api/loans', require('./routes/loanRoutes'));
-app.use('/api/reports', require('./routes/reportRoutes'));
-app.use('/api/notifications', require('./routes/notificationRoutes'));
-app.use('/api/audit-logs', require('./routes/auditLogRoutes'));
-app.use('/api/settings', require('./routes/settingRoutes'));
+// Dashboard
+app.use('/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
+
+// Notifications
+app.use('/notifications', require('./routes/notificationRoutes'));
+app.use('/api/notifications', require('./routes/notificationRoutes'));
+
+// Other API Routes (Dual mounted for safety)
+app.use('/users', require('./routes/userRoutes'));
+app.use('/api/users', require('./routes/userRoutes'));
+
+app.use('/roles', require('./routes/roleRoutes'));
+app.use('/api/roles', require('./routes/roleRoutes'));
+
+app.use('/products', require('./routes/productRoutes'));
+app.use('/api/products', require('./routes/productRoutes'));
+
+app.use('/categories', require('./routes/categoryRoutes'));
+app.use('/api/categories', require('./routes/categoryRoutes'));
+
+app.use('/suppliers', require('./routes/supplierRoutes'));
+app.use('/api/suppliers', require('./routes/supplierRoutes'));
+
+app.use('/customers', require('./routes/customerRoutes'));
+app.use('/api/customers', require('./routes/customerRoutes'));
+
+app.use('/stock', require('./routes/stockRoutes'));
+app.use('/api/stock', require('./routes/stockRoutes'));
+
+app.use('/sales', require('./routes/saleRoutes'));
+app.use('/api/sales', require('./routes/saleRoutes'));
+
+app.use('/orders', require('./routes/orderRoutes'));
+app.use('/api/orders', require('./routes/orderRoutes'));
+
+app.use('/payments', require('./routes/paymentRoutes'));
+app.use('/api/payments', require('./routes/paymentRoutes'));
+
+app.use('/loans', require('./routes/loanRoutes'));
+app.use('/api/loans', require('./routes/loanRoutes'));
+
+app.use('/reports', require('./routes/reportRoutes'));
+app.use('/api/reports', require('./routes/reportRoutes'));
+
+app.use('/audit-logs', require('./routes/auditLogRoutes'));
+app.use('/api/audit-logs', require('./routes/auditLogRoutes'));
+
+app.use('/settings', require('./routes/settingRoutes'));
+app.use('/api/settings', require('./routes/settingRoutes'));
+
+app.use('/backups', require('./routes/backupRoutes'));
 app.use('/api/backups', require('./routes/backupRoutes'));
 
 app.use(notFound);
