@@ -113,6 +113,22 @@ const seed = async () => {
     console.log('Super Admin already exists.');
   }
 
+  // Super Admin user 2
+  const admin2Exists = await User.findOne({ username: 'ishimwe' });
+  if (!admin2Exists) {
+    await User.create({
+      fullName: 'Ishimwe RDA',
+      username: 'ishimwe',
+      email: 'ishimwerda@gmail.com',
+      phone: '+250700000001',
+      password: 'Ishimwe@2007',
+      role: roles['Super Admin']._id
+    });
+    console.log('Super Admin created -> username: ishimwe | email: ishimwerda@gmail.com | password: Ishimwe@2007');
+  } else {
+    console.log('Super Admin 2 already exists.');
+  }
+
   // Settings
   const settings = await Setting.getSettings();
   console.log(`Company settings ready: ${settings.companyName}`);
