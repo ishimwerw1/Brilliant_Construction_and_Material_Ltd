@@ -94,13 +94,15 @@ export default function SalesReport() {
         <Col lg={4}>
           <Card body>
             <Card.Title className="fs-6 fw-semibold">Top Selling Products</Card.Title>
-            <Chart type="bar" {...{
-              data: {
-                labels: data.topProducts.map((p) => p.name.slice(0, 14)),
-                datasets: [{ data: data.topProducts.map((p) => p.qtySold), backgroundColor: '#1a6fb5', borderRadius: 4 }]
-              },
-              options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-            }} height={200} />
+            <div style={{ maxHeight: Math.max(200, data.topProducts.length * 36), overflowY: 'auto' }}>
+              <Chart type="bar" {...{
+                data: {
+                  labels: data.topProducts.map((p) => p.name.slice(0, 14)),
+                  datasets: [{ data: data.topProducts.map((p) => p.qtySold), backgroundColor: '#1a6fb5', borderRadius: 4 }]
+                },
+                options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+              }} />
+            </div>
           </Card>
         </Col>
         <Col lg={4}>

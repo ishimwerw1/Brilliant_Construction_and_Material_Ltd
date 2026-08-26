@@ -55,13 +55,15 @@ export default function LoansReport() {
         <Col lg={7}>
           <Card body className="h-100">
             <Card.Title className="fs-6 fw-semibold">Monthly Repayments</Card.Title>
-            <Chart type="bar" {...{
-              data: {
-                labels: data.repaymentTrend.map((r) => r._id),
-                datasets: [{ data: data.repaymentTrend.map((r) => r.total), backgroundColor: '#1e7e46', borderRadius: 4 }]
-              },
-              options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-            }} height={200} />
+            <div style={{ maxHeight: Math.max(200, data.repaymentTrend.length * 40), overflowY: 'auto' }}>
+              <Chart type="bar" {...{
+                data: {
+                  labels: data.repaymentTrend.map((r) => r._id),
+                  datasets: [{ data: data.repaymentTrend.map((r) => r.total), backgroundColor: '#1e7e46', borderRadius: 4 }]
+                },
+                options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+              }} />
+            </div>
           </Card>
         </Col>
       </Row>
@@ -70,18 +72,20 @@ export default function LoansReport() {
         <Col lg={6}>
           <Card body>
             <Card.Title className="fs-6 fw-semibold">Status Breakdown</Card.Title>
-            <Table size="sm" hover className="mb-0">
-              <thead><tr><th>Status</th><th>Count</th><th>Outstanding</th></tr></thead>
-              <tbody>
-                {data.byStatus.map((s) => (
-                  <tr key={s._id}>
-                    <td><StatusBadge value={s._id} /></td>
-                    <td>{s.count}</td>
-                    <td>{formatMoney(s.amount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
+            <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+              <Table size="sm" hover className="mb-0">
+                <thead><tr><th>Status</th><th>Count</th><th>Outstanding</th></tr></thead>
+                <tbody>
+                  {data.byStatus.map((s) => (
+                    <tr key={s._id}>
+                      <td><StatusBadge value={s._id} /></td>
+                      <td>{s.count}</td>
+                      <td>{formatMoney(s.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
           </Card>
         </Col>
         <Col lg={6}>
