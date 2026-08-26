@@ -72,7 +72,7 @@ export default function SalesReport() {
                   { label: 'Received', data: data.byDay.map((d) => d.received), borderColor: '#1e7e46', tension: .35 }
                 ]
               },
-              options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } }
+              options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } }
             }} height={110} />
           </Card>
         </Col>
@@ -94,15 +94,13 @@ export default function SalesReport() {
         <Col lg={4}>
           <Card body>
             <Card.Title className="fs-6 fw-semibold">Top Selling Products</Card.Title>
-            <div style={{ maxHeight: Math.max(200, data.topProducts.length * 36), overflowY: 'auto' }}>
-              <Chart type="bar" {...{
-                data: {
-                  labels: data.topProducts.map((p) => p.name.slice(0, 14)),
-                  datasets: [{ data: data.topProducts.map((p) => p.qtySold), backgroundColor: '#1a6fb5', borderRadius: 4 }]
-                },
-                options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-              }} />
-            </div>
+            <Chart type="bar" {...{
+              data: {
+                labels: data.topProducts.map((p) => p.name.slice(0, 14)),
+                datasets: [{ data: data.topProducts.map((p) => p.qtySold), backgroundColor: '#1a6fb5', borderRadius: 4 }]
+              },
+              options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+            }} height={Math.max(180, data.topProducts.length * 36)} />
           </Card>
         </Col>
         <Col lg={4}>
