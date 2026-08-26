@@ -44,19 +44,19 @@ export default function Topbar({ onToggleSidebar }) {
   }
 
   return (
-    <div className="bcml-topbar d-flex align-items-center justify-content-between px-3 px-lg-4">
-      <div className="d-flex align-items-center gap-2">
-        <Button variant="light" size="sm" className="d-lg-none border" onClick={onToggleSidebar}>
+    <div className="bcml-topbar d-flex align-items-center justify-content-between px-2 px-sm-3 px-lg-4 py-2 bg-white border-bottom position-sticky top-0 z-3">
+      <div className="d-flex align-items-center gap-2 overflow-hidden">
+        <Button variant="light" size="sm" className="d-lg-none border flex-shrink-0" onClick={onToggleSidebar}>
           <i className="bi bi-list fs-5" />
         </Button>
-        <span className="fw-semibold text-secondary small d-none d-md-inline">
+        <span className="fw-semibold text-secondary small d-none d-md-inline text-truncate">
           {new Date().toLocaleDateString(lang === 'rw' ? 'rw-RW' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
         </span>
       </div>
 
-      <div className="d-flex align-items-center gap-2">
+      <div className="d-flex align-items-center gap-1 gap-sm-2 flex-shrink-0">
         <Dropdown align="end" onSelect={() => setShowNotif(false)}>
-          <Dropdown.Toggle variant="light" className="border position-relative" size="sm">
+          <Dropdown.Toggle variant="light" className="border position-relative px-2 px-sm-3" size="sm">
             <i className="bi bi-bell fs-6" />
             {unreadCount > 0 && (
               <Badge bg="danger" pill className="position-absolute top-0 start-100 translate-middle" style={{ fontSize: '0.55rem' }}>
@@ -64,11 +64,11 @@ export default function Topbar({ onToggleSidebar }) {
               </Badge>
             )}
           </Dropdown.Toggle>
-          <Dropdown.Menu style={{ width: 340, maxHeight: 420, overflowY: 'auto' }} show={showNotif} onToggle={(v) => { setShowNotif(v); if (v) loadNotifications() }}>
-            <div className="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
+          <Dropdown.Menu className="shadow border-0 mw-100" style={{ width: 'min(340px, 92vw)', maxHeight: '80vh', overflowY: 'auto' }} show={showNotif} onToggle={(v) => { setShowNotif(v); if (v) loadNotifications() }}>
+            <div className="d-flex justify-content-between align-items-center px-3 py-2 border-bottom sticky-top bg-white">
               <strong className="small">{t('notifications')}</strong>
               {unreadCount > 0 && (
-                <Button variant="link" size="sm" className="p-0 text-decoration-none" onClick={markAllRead}>
+                <Button variant="link" size="sm" className="p-0 text-decoration-none small" onClick={markAllRead}>
                   {t('markAllRead')}
                 </Button>
               )}
@@ -83,14 +83,14 @@ export default function Topbar({ onToggleSidebar }) {
                     as={Link}
                     to={n.link || '#'}
                     key={n._id}
-                    className={`py-2 border-bottom ${read ? '' : 'bg-light'}`}
+                    className={`py-2 border-bottom text-wrap ${read ? '' : 'bg-light'}`}
                     onClick={async () => { try { await api.put(`/notifications/${n._id}/read`) } catch {} }}
                   >
                     <div className="d-flex gap-2">
-                      <i className={`bi ${iconFor(n.type)} mt-1`} style={{ color: colorFor(n.type) }} />
-                      <div>
-                        <div className="small fw-semibold">{n.title}</div>
-                        <div className="text-muted" style={{ fontSize: '0.78rem' }}>{n.message}</div>
+                      <i className={`bi ${iconFor(n.type)} mt-1 flex-shrink-0`} style={{ color: colorFor(n.type) }} />
+                      <div className="flex-grow-1 overflow-hidden">
+                        <div className="small fw-semibold text-truncate">{n.title}</div>
+                        <div className="text-muted text-break" style={{ fontSize: '0.78rem' }}>{n.message}</div>
                         <div className="text-muted" style={{ fontSize: '0.68rem' }}>{new Date(n.createdAt).toLocaleString()}</div>
                       </div>
                     </div>
@@ -103,11 +103,11 @@ export default function Topbar({ onToggleSidebar }) {
 
         {isAdminUser && (
           <Dropdown align="end">
-            <Dropdown.Toggle variant="dark" size="sm" className="d-flex align-items-center gap-2">
-              <i className="bi bi-shield-lock me-1" />
-              <span className="small fw-semibold">{t('adminMenu')}</span>
+            <Dropdown.Toggle variant="dark" size="sm" className="d-flex align-items-center gap-1 gap-sm-2 px-2 px-sm-3">
+              <i className="bi bi-shield-lock" />
+              <span className="small fw-semibold d-none d-sm-inline">{t('adminMenu')}</span>
             </Dropdown.Toggle>
-            <Dropdown.Menu align="end">
+            <Dropdown.Menu align="end" className="shadow border-0">
               <Dropdown.Header><small className="text-uppercase text-muted fw-semibold">Administration</small></Dropdown.Header>
               {(user?.role?.name === 'Super Admin' || hasPermission('users.read')) && (
                 <Dropdown.Item as={Link} to="/users"><i className="bi bi-person-gear me-2" />{t('users')}</Dropdown.Item>
@@ -126,16 +126,16 @@ export default function Topbar({ onToggleSidebar }) {
         )}
 
         <Dropdown align="end">
-          <Dropdown.Toggle variant="light" className="border d-flex align-items-center gap-2" size="sm">
-            <span className="avatar-circle" style={{ width: 28, height: 28, borderRadius: '50%', background: '#0d3b66', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700 }}>
+          <Dropdown.Toggle variant="light" className="border d-flex align-items-center gap-1 gap-sm-2 px-2 px-sm-3" size="sm">
+            <span className="avatar-circle flex-shrink-0" style={{ width: 28, height: 28, borderRadius: '50%', background: '#0d3b66', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700 }}>
               {initials(user?.fullName)}
             </span>
-            <span className="d-none d-md-inline small fw-semibold">{user?.fullName}</span>
+            <span className="d-none d-md-inline small fw-semibold text-truncate" style={{ maxWidth: 120 }}>{user?.fullName}</span>
           </Dropdown.Toggle>
-          <Dropdown.Menu align="end">
+          <Dropdown.Menu align="end" className="shadow border-0">
             <Dropdown.Header>
-              <div className="fw-semibold">{user?.fullName}</div>
-              <small className="text-muted">{user?.role?.name}</small>
+              <div className="fw-semibold text-truncate">{user?.fullName}</div>
+              <small className="text-muted d-block text-truncate">{user?.role?.name}</small>
             </Dropdown.Header>
             <Dropdown.Divider />
             <Dropdown.Item as={Link} to="/profile"><i className="bi bi-person me-2" />{t('profile')}</Dropdown.Item>
@@ -147,10 +147,11 @@ export default function Topbar({ onToggleSidebar }) {
         <Button
           variant="outline-primary"
           size="sm"
+          className="px-2 px-sm-3"
           onClick={() => setLang(lang === 'en' ? 'rw' : 'en')}
           title={t('language')}
         >
-          <i className="bi bi-translate me-1" />
+          <i className="bi bi-translate me-1 d-none d-sm-inline" />
           {lang === 'en' ? 'RW' : 'EN'}
         </Button>
       </div>
