@@ -43,9 +43,7 @@ export default function LoanDetail() {
     const amount = Number(form.amount)
     if (!amount || amount <= 0) return setError('Enter a valid amount.')
     if (amount > loan.outstandingBalance) return setError(`Amount cannot exceed the outstanding balance of ${formatMoney(loan.outstandingBalance)}.`)
-    if ((form.method === 'MOMO' || form.method === 'BANK') && !form.reference.trim()) {
-      return setError(`A transaction/reference number is required for ${form.method}.`)
-    }
+
     setShowRepay(false)
     setShowConfirm(true)
   }
@@ -230,8 +228,8 @@ export default function LoanDetail() {
             </Form.Group>
             {(form.method === 'MOMO' || form.method === 'BANK') && (
               <Form.Group className="mb-2">
-                <Form.Label className="small fw-semibold">Transaction Reference *</Form.Label>
-                <Form.Control value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} placeholder={form.method === 'MOMO' ? 'MoMo TXN ID' : 'Bank slip no.'} required />
+                <Form.Label className="small fw-semibold">Transaction Reference</Form.Label>
+                <Form.Control value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} placeholder={form.method === 'MOMO' ? 'MoMo TXN ID' : 'Bank slip no.'} />
               </Form.Group>
             )}
             <Form.Group>
