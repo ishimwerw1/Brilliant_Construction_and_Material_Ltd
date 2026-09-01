@@ -167,19 +167,44 @@ exports.remove = wrapAsync(async (req, res) => {
   if (!purchase) throw new ApiError(404, 'Purchase not found.');
 
   const SupplierPayment = require('../models/SupplierPayment');
-  const payments = await SupplierPayment.countDocuments({ purchase: purchase._id });
-  if (payments > 0) {
-    throw new ApiError(400, `Cannot delete purchase ${purchase.purchaseNumber}. ${payments} supplier payment(s) exist against this purchase.`);
+  const payments = await SupplierPayment.find({ purchase: purchase._id });
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    // Cascade-delete any supplier payments linked to this purchase
+    for (const payment of payments) {
+      await logAction({
+        user: req.user,
+        action: ACTIONS.SUPPLIER_PAYMENT_DELETE,
+        entity: 'SupplierPayment',
+        entityId: payment._id,
+        description: `Supplier payment ${payment.paymentNumber} deleted with purchase ${purchase.purchaseNumber}`,
+        session
+      });
+      await payment.deleteOne({ session });
+    }
+
+    await logAction({
+      user: req.user,
+      action: ACTIONS.PURCHASE_DELETE,
+      entity: 'Purchase',
+      entityId: purchase._id,
+      description: `Purchase deleted: ${purchase.purchaseNumber}`,
+      session
+    });
+
+    await purchase.deleteOne({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    const suffix = payments.length ? ` ${payments.length} supplier payment(s) deleted with it.` : '';
+    res.json({ success: true, message: `Purchase ${purchase.purchaseNumber} deleted successfully.` + suffix });
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    throw err;
   }
-
-  await logAction({
-    user: req.user,
-    action: ACTIONS.PURCHASE_DELETE,
-    entity: 'Purchase',
-    entityId: purchase._id,
-    description: `Purchase deleted: ${purchase.purchaseNumber}`
-  });
-
-  await purchase.deleteOne();
-  res.json({ success: true, message: `Purchase ${purchase.purchaseNumber} deleted successfully.` });
 });
