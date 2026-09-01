@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Purchase = require('../models/Purchase');
+const Product = require('../models/Product');
 const ApiError = require('../utils/ApiError');
 const { wrapAsync } = require('../middleware/errorHandler');
 const { logAction, ACTIONS } = require('../services/auditService');
@@ -51,17 +52,23 @@ exports.create = wrapAsync(async (req, res) => {
 
   try {
     let totalAmount = 0;
-    const purchaseItems = items.map((item) => {
-      const subtotal = item.quantity * item.costPrice;
+    const purchaseItems = [];
+    for (const item of items) {
+      let productName = item.productName;
+      if (!productName?.trim() && item.product) {
+        const prod = await Product.findById(item.product).select('name').session(session);
+        productName = prod?.name || '';
+      }
+      const subtotal = (item.quantity || 0) * (item.costPrice || 0);
       totalAmount += subtotal;
-      return {
+      purchaseItems.push({
         product: item.product,
-        productName: item.productName,
+        productName: productName || 'Imported product',
         quantity: item.quantity,
         costPrice: item.costPrice,
         subtotal
-      };
-    });
+      });
+    }
 
     const paid = Number(amountPaid) || 0;
     let paymentStatus = 'UNPAID';

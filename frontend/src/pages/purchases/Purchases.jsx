@@ -134,7 +134,7 @@ export default function Purchases() {
     try {
       const payload = {
         supplier: form.supplier,
-        items: validItems.map((i) => ({ product: i.product, quantity: i.quantity, costPrice: i.costPrice })),
+        items: validItems.map((i) => ({ product: i.product, productName: i.productName, quantity: i.quantity, costPrice: i.costPrice })),
         paymentMethod: form.paymentMethod,
         amountPaid: Number(form.amountPaid || 0),
         dueDate: form.dueDate || undefined,
