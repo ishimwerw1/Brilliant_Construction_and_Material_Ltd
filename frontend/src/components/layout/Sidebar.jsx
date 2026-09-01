@@ -8,10 +8,10 @@ export default function Sidebar({ open, onClose }) {
   const { hasPermission, user } = useAuth()
   const { t } = useLanguage()
 
-  const Item = ({ to, icon, labelKey, end }) => (
+  const Item = ({ to, icon, labelKey, label, end }) => (
     <NavLink to={to} end={end} className={({ isActive }) => `bcml-nav-link${isActive ? ' active' : ''}`} onClick={onClose}>
       <i className={`bi ${icon}`} />
-      <span className="text-truncate">{t(labelKey)}</span>
+      <span className="text-truncate">{label ?? t(labelKey)}</span>
     </NavLink>
   )
 
@@ -63,6 +63,15 @@ export default function Sidebar({ open, onClose }) {
           <>
             <GroupLabel>{t('suppliers')}</GroupLabel>
             <Item to="/suppliers" icon="bi-truck" labelKey="suppliers" />
+            {hasPermission('purchases.read') && <Item to="/purchases" icon="bi-cart4" labelKey="purchases" />}
+            {hasPermission('supplierDebts.read') && <Item to="/supplier-debts" icon="bi-cash-coin" labelKey="supplierDebts" />}
+          </>
+        )}
+
+        {hasPermission('expenses.read') && (
+          <>
+            <GroupLabel>{t('finance')}</GroupLabel>
+            <Item to="/expenses" icon="bi-receipt-cutoff" labelKey="expenses" />
           </>
         )}
 
@@ -81,6 +90,10 @@ export default function Sidebar({ open, onClose }) {
             <Item to="/reports/customers" icon="bi-person-lines-fill" labelKey="customerReports" />
             <Item to="/reports/loans" icon="bi-credit-card-2-front" labelKey="loanReports" />
             <Item to="/reports/financial" icon="bi-bank" labelKey="financialReports" />
+            <Item to="/reports/profit-loss" icon="bi-bar-chart-line" labelKey="profitLoss" />
+            <Item to="/reports/expenses" icon="bi-receipt-cutoff" labelKey="expenseReports" />
+            <Item to="/reports/purchases" icon="bi-cart4" labelKey="purchaseReports" />
+            <Item to="/reports/user-performance" icon="bi-person-check" labelKey="userPerformanceReport" />
           </>
         )}
       </Nav>

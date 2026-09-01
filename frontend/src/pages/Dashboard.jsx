@@ -195,6 +195,40 @@ export default function Dashboard() {
         </Col>
       </Row>
 
+      {/* Financial Overview Row */}
+      <h6 className="fw-semibold mb-2 mt-1" style={{ color: '#0d3b66' }}><i className="bi bi-pie-chart-fill me-2" />Financial Overview — This Month</h6>
+      <Row className="g-2 g-md-3 mb-2 mb-md-3 stagger">
+        <Col xs={12} sm={6} xl={2}>
+          <StatCard icon="bi-currency-dollar" label="Gross Profit" value={`${(c.monthGrossProfit ?? 0).toLocaleString()} RWF`} color="success" sub={`COGS: ${(c.monthCogs ?? 0).toLocaleString()}`} />
+        </Col>
+        <Col xs={12} sm={6} xl={2}>
+          <StatCard icon="bi-box" label="Stock Value (Cost)" value={`${(c.stockValueCost ?? 0).toLocaleString()} RWF`} color="primary" sub={`Retail: ${(c.stockValueRetail ?? 0).toLocaleString()}`} />
+        </Col>
+        <Col xs={12} sm={6} xl={2}>
+          <StatCard icon="bi-receipt-cutoff" label="Total Expenses" value={`${(c.monthExpenses ?? 0).toLocaleString()} RWF`} color="warning" link={hasPermission('expenses.read') ? '/expenses' : undefined} />
+        </Col>
+        <Col xs={12} sm={6} xl={2}>
+          <StatCard icon="bi-arrow-repeat" label="Net Profit" value={`${(c.monthNetProfit ?? 0).toLocaleString()} RWF`} color={c.monthNetProfit >= 0 ? 'info' : 'danger'} sub="Gross − Expenses" />
+        </Col>
+        <Col xs={12} sm={6} xl={2}>
+          <StatCard icon="bi-cart4" label="Total Purchases" value={`${(c.totalPurchases ?? 0).toLocaleString()} RWF`} color="primary" link={hasPermission('purchases.read') ? '/purchases' : undefined} />
+        </Col>
+        <Col xs={12} sm={6} xl={2}>
+          <StatCard icon="bi-cash-coin" label="Supplier Debt" value={`${(c.supplierDebt ?? 0).toLocaleString()} RWF`} color="danger" sub={`${c.supplierDebtCount ?? 0} open`} link={hasPermission('supplierDebts.read') ? '/supplier-debts' : undefined} />
+        </Col>
+      </Row>
+
+      {/* Today's Activity Row */}
+      <h6 className="fw-semibold mb-2 mt-1" style={{ color: '#0d3b66' }}><i className="bi bi-calendar-event-fill me-2" />Today's Activity</h6>
+      <Row className="g-2 g-md-3 mb-2 mb-md-3 stagger">
+        <Col xs={6} sm={4} xl={2}><StatCard icon="bi-receipt" label="Sales Today" value={c.todaySalesCount} color="success" sub={`${c.todayRevenue.toLocaleString()} RWF`} /></Col>
+        <Col xs={6} sm={4} xl={2}><StatCard icon="bi-clipboard-check" label="Orders Today" value={c.ordersToday ?? 0} color="info" /></Col>
+        <Col xs={6} sm={4} xl={2}><StatCard icon="bi-receipt-cutoff" label="Expenses Today" value={`${(c.expensesToday ?? 0).toLocaleString()} RWF`} color="warning" sub={`${c.expenseCountToday ?? 0} item(s)`} /></Col>
+        <Col xs={6} sm={4} xl={2}><StatCard icon="bi-cart4" label="Purchases Today" value={c.purchasesToday ?? 0} color="primary" /></Col>
+        <Col xs={6} sm={4} xl={2}><StatCard icon="bi-person-plus" label="New Customers" value={c.newCustomersToday ?? 0} color="primary" /></Col>
+        <Col xs={6} sm={4} xl={2}><StatCard icon="bi-people" label="Active Users" value={c.activeUsers ?? 0} color="secondary" /></Col>
+      </Row>
+
       {/* Admin Panel */}
       {isAdminUser && (
         <Card className="mb-3 mb-md-4 border-0 shadow-sm" style={{ background: 'linear-gradient(135deg,#0d3b66 0%,#1a5fa8 100%)' }}>
@@ -347,6 +381,38 @@ export default function Dashboard() {
           </Card>
         </Col>
       </Row>
+
+      {/* Recent Activity */}
+      {data.recentActivity && data.recentActivity.length > 0 && (
+        <Row className="g-2 g-md-3 mt-1">
+          <Col xs={12}>
+            <Card className="shadow-sm border-0">
+              <Card.Header className="bg-white fw-semibold fs-6 d-flex justify-content-between align-items-center py-3">
+                <span><i className="bi bi-activity me-2 text-primary" />{t('recentActivity')}</span>
+                {hasPermission('auditLogs.read') && (
+                  <Link to="/audit-logs" className="btn btn-sm btn-outline-primary"><i className="bi bi-journal-text me-1" />Audit Logs</Link>
+                )}
+              </Card.Header>
+              <Card.Body className="p-0">
+                <div className="table-responsive">
+                  <Table size="sm" hover className="mb-0 align-middle text-nowrap">
+                    <thead><tr><th>{t('time')}</th><th>{t('user')}</th><th>{t('actions')}</th></tr></thead>
+                    <tbody>
+                      {data.recentActivity.map((a) => (
+                        <tr key={a._id}>
+                          <td className="small text-muted">{new Date(a.createdAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</td>
+                          <td className="small">{a.userName}</td>
+                          <td className="small">{a.description}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </div>
+              </Card.Body>
+            </Card>
+          </Col>
+        </Row>
+      )}
     </div>
   )
 }

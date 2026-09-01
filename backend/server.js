@@ -74,6 +74,18 @@ app.use('/api/payments', require('./routes/paymentRoutes'));
 app.use('/loans', require('./routes/loanRoutes'));
 app.use('/api/loans', require('./routes/loanRoutes'));
 
+app.use('/expenses', require('./routes/expenseRoutes'));
+app.use('/api/expenses', require('./routes/expenseRoutes'));
+
+app.use('/purchases', require('./routes/purchaseRoutes'));
+app.use('/api/purchases', require('./routes/purchaseRoutes'));
+
+app.use('/supplier-debts', require('./routes/supplierDebtRoutes'));
+app.use('/api/supplier-debts', require('./routes/supplierDebtRoutes'));
+
+app.use('/supplier-payments', require('./routes/supplierPaymentRoutes'));
+app.use('/api/supplier-payments', require('./routes/supplierPaymentRoutes'));
+
 app.use('/reports', require('./routes/reportRoutes'));
 app.use('/api/reports', require('./routes/reportRoutes'));
 

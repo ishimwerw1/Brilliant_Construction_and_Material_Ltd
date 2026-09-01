@@ -25,7 +25,8 @@ const ROLE_DEFS = [
   },
   {
     name: 'Manager',
-    description: 'Manages operations, sales, stock, customers, loans and reports. Cannot manage admins or system settings.',
+    description: 'Manages operations, sales, stock, customers, loans, expenses, purchases and reports. Cannot manage admins or system settings.',
+    isSystem: true,
     permissions: [
       'dashboard.read',
       'products.create', 'products.read', 'products.update', 'products.delete',
@@ -37,24 +38,30 @@ const ROLE_DEFS = [
       'orders.create', 'orders.read', 'orders.cancel',
       'payments.create', 'payments.read',
       'loans.create', 'loans.read', 'loans.update', 'loans.cancel',
+      'expenses.create', 'expenses.read', 'expenses.update', 'expenses.delete',
+      'purchases.create', 'purchases.read', 'purchases.update', 'purchases.delete',
+      'supplierDebts.read', 'supplierDebts.pay',
       'reports.read', 'notifications.read'
     ]
   },
   {
     name: 'Storekeeper',
-    description: 'Receives stock, views inventory, performs authorized adjustments.',
+    description: 'Receives stock, views inventory, performs authorized adjustments, records purchases.',
+    isSystem: true,
     permissions: [
       'dashboard.read',
       'products.create', 'products.read', 'products.update',
       'categories.read',
       'stock.create', 'stock.read', 'stock.adjust',
       'suppliers.create', 'suppliers.read', 'suppliers.update',
+      'purchases.create', 'purchases.read', 'purchases.update',
       'notifications.read'
     ]
   },
   {
     name: 'Cashier',
-    description: 'Creates sales, records payments, manages customers, prints invoices.',
+    description: 'Creates sales, records payments, manages customers, records expenses.',
+    isSystem: true,
     permissions: [
       'dashboard.read',
       'products.read',
@@ -63,6 +70,7 @@ const ROLE_DEFS = [
       'sales.create', 'sales.read',
       'orders.create', 'orders.read',
       'payments.create', 'payments.read',
+      'expenses.create', 'expenses.read',
       'loans.read',
       'notifications.read'
     ]

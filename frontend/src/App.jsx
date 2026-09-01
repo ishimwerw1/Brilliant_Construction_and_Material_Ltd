@@ -25,6 +25,9 @@ import Loans from './pages/loans/Loans'
 import LoanDetail from './pages/loans/LoanDetail'
 
 import Suppliers from './pages/suppliers/Suppliers'
+import SupplierDebts from './pages/supplierDebts/SupplierDebts'
+import Expenses from './pages/expenses/Expenses'
+import Purchases from './pages/purchases/Purchases'
 import Payments from './pages/payments/Payments'
 
 import ReportsSales from './pages/reports/SalesReport'
@@ -32,6 +35,10 @@ import ReportsStock from './pages/reports/StockReport'
 import ReportsCustomers from './pages/reports/CustomersReport'
 import ReportsLoans from './pages/reports/LoansReport'
 import ReportsFinancial from './pages/reports/FinancialReport'
+import ReportsExpenses from './pages/reports/ExpenseReport'
+import ReportsPurchases from './pages/reports/PurchaseReport'
+import ReportsUserPerformance from './pages/reports/UserPerformanceReport'
+import ReportsProfitLoss from './pages/reports/ProfitLossReport'
 
 import Users from './pages/admin/Users'
 import AuditLogs from './pages/admin/AuditLogs'
@@ -76,6 +83,9 @@ export default function App() {
               <Route path="/loans/:id" element={<Protected permission="loans.read"><LoanDetail /></Protected>} />
 
               <Route path="/suppliers" element={<Protected permission="suppliers.read"><Suppliers /></Protected>} />
+              <Route path="/supplier-debts" element={<Protected permission="supplierDebts.read"><SupplierDebts /></Protected>} />
+              <Route path="/expenses" element={<Protected permission="expenses.read"><Expenses /></Protected>} />
+              <Route path="/purchases" element={<Protected permission="purchases.read"><Purchases /></Protected>} />
               <Route path="/payments" element={<Protected permission="payments.read"><Payments /></Protected>} />
 
               <Route path="/reports/sales" element={<Protected permission="reports.read"><ReportsSales /></Protected>} />
@@ -83,6 +93,10 @@ export default function App() {
               <Route path="/reports/customers" element={<Protected permission="reports.read"><ReportsCustomers /></Protected>} />
               <Route path="/reports/loans" element={<Protected permission="reports.read"><ReportsLoans /></Protected>} />
               <Route path="/reports/financial" element={<Protected permission="reports.read"><ReportsFinancial /></Protected>} />
+              <Route path="/reports/expenses" element={<Protected permission="reports.read"><ReportsExpenses /></Protected>} />
+              <Route path="/reports/purchases" element={<Protected permission="reports.read"><ReportsPurchases /></Protected>} />
+              <Route path="/reports/user-performance" element={<Protected permission="reports.read"><ReportsUserPerformance /></Protected>} />
+              <Route path="/reports/profit-loss" element={<Protected permission="reports.read"><ReportsProfitLoss /></Protected>} />
 
               <Route path="/users" element={<Protected permission="users.read"><Users /></Protected>} />
               <Route path="/audit-logs" element={<Protected permission="auditLogs.read"><AuditLogs /></Protected>} />

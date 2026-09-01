@@ -41,6 +41,19 @@ const PERMISSIONS = [
   'loans.update',
   'loans.cancel',
 
+  'expenses.create',
+  'expenses.read',
+  'expenses.update',
+  'expenses.delete',
+
+  'purchases.create',
+  'purchases.read',
+  'purchases.update',
+  'purchases.delete',
+
+  'supplierDebts.read',
+  'supplierDebts.pay',
+
   'users.create',
   'users.read',
   'users.update',

@@ -5,6 +5,10 @@ const Supplier = require('../models/Supplier');
 const Sale = require('../models/Sale');
 const Order = require('../models/Order');
 const Loan = require('../models/Loan');
+const Expense = require('../models/Expense');
+const Purchase = require('../models/Purchase');
+const User = require('../models/User');
+const AuditLog = require('../models/AuditLog');
 const StockTransaction = require('../models/StockTransaction');
 const { wrapAsync } = require('../middleware/errorHandler');
 
@@ -91,6 +95,66 @@ exports.overview = wrapAsync(async (req, res) => {
     { $sort: { _id: 1 } }
   ]);
 
+  // COGS & Gross Profit for current month
+  const monthProfitAgg = await Sale.aggregate([
+    { $match: { createdAt: { $gte: monthStart }, status: 'COMPLETED' } },
+    { $unwind: '$items' },
+    {
+      $lookup: { from: 'products', localField: 'items.product', foreignField: '_id', as: 'product' }
+    },
+    { $unwind: '$product' },
+    {
+      $project: {
+        cost: { $multiply: ['$product.buyingPrice', '$items.quantity'] },
+        revenue: '$items.subtotal'
+      }
+    },
+    { $group: { _id: null, cogs: { $sum: '$cost' }, revenue: { $sum: '$revenue' } } }
+  ]);
+  const monthCogs = monthProfitAgg[0]?.cogs || 0;
+  const monthRev = monthSalesAgg[0]?.revenue || 0;
+
+  // Expenses (this month)
+  const [monthExpenses] = await Expense.aggregate([
+    { $match: { date: { $gte: monthStart } } },
+    { $group: { _id: null, total: { $sum: '$amount' } } }
+  ]);
+
+  // Today's activity
+  const purchasesAgg = await Purchase.aggregate([
+    { $match: { createdAt: { $gte: today } } },
+    { $group: { _id: null, count: { $sum: 1 }, total: { $sum: '$totalAmount' } } }
+  ]);
+  const [expensesToday] = await Expense.aggregate([
+    { $match: { date: { $gte: today } } },
+    { $group: { _id: null, count: { $sum: 1 }, total: { $sum: '$amount' } } }
+  ]);
+  const [newCustomersToday] = await Customer.aggregate([
+    { $match: { createdAt: { $gte: today } } },
+    { $group: { _id: null, count: { $sum: 1 } } }
+  ]);
+  const [ordersToday] = await Order.aggregate([
+    { $match: { createdAt: { $gte: today } } },
+    { $group: { _id: null, count: { $sum: 1 } } }
+  ]);
+  const activeUsers = await User.countDocuments({ isActive: true });
+
+  // Supplier debt summary
+  const [debtAgg] = await Purchase.aggregate([
+    { $match: { paymentStatus: { $in: ['UNPAID', 'PARTIALLY_PAID'] } } },
+    { $group: { _id: null, total: { $sum: '$remainingAmount' }, count: { $sum: 1 } } }
+  ]);
+
+  // Total stock value
+  const [stockValueAgg] = await Product.aggregate([
+    { $match: { status: 'ACTIVE' } },
+    { $group: { _id: null, cost: { $sum: { $multiply: ['$quantity', '$buyingPrice'] } }, retail: { $sum: { $multiply: ['$quantity', '$sellingPrice'] } } } }
+  ]);
+
+  // Recent activity from audit logs
+  const recentActivity = await AuditLog.find().sort({ createdAt: -1 }).limit(10)
+    .populate('user', 'fullName');
+
   const [recentTransactions, recentSales, lowStockProducts, outOfStockProducts, topDebtors] = await Promise.all([
     StockTransaction.find().sort({ createdAt: -1 }).limit(10)
       .populate('product', 'name').populate('performedBy', 'fullName'),
@@ -101,6 +165,9 @@ exports.overview = wrapAsync(async (req, res) => {
     Loan.find({ status: { $in: ['ACTIVE', 'PARTIALLY_PAID', 'OVERDUE'] } }).sort({ outstandingBalance: -1 }).limit(8)
       .select('customerName customerPhone outstandingBalance dueDate status loanNumber')
   ]);
+
+  const monthExpensesTotal = monthExpenses?.total || 0;
+  const monthGrossProfit = monthRev - monthCogs;
 
   res.json({
     success: true,
@@ -120,7 +187,22 @@ exports.overview = wrapAsync(async (req, res) => {
         outstandingLoansCount: loanAgg[0]?.count || 0,
         overdueLoansAmount: loanAgg[0]?.overdueAmount || 0,
         lowStockCount,
-        outOfStockCount
+        outOfStockCount,
+        monthCogs,
+        monthGrossProfit,
+        monthExpenses: monthExpensesTotal,
+        monthNetProfit: monthGrossProfit - monthExpensesTotal,
+        totalPurchases: purchasesAgg[0]?.total || 0,
+        purchasesToday: purchasesAgg[0]?.count || 0,
+        expensesToday: expensesToday?.total || 0,
+        expenseCountToday: expensesToday?.count || 0,
+        supplierDebt: debtAgg?.total || 0,
+        supplierDebtCount: debtAgg?.count || 0,
+        newCustomersToday: newCustomersToday?.count || 0,
+        ordersToday: ordersToday?.count || 0,
+        activeUsers,
+        stockValueCost: stockValueAgg?.cost || 0,
+        stockValueRetail: stockValueAgg?.retail || 0
       },
       todayByMethod: todayPayments[0] || { cash: 0, momo: 0, bank: 0, credit: 0 },
       salesTrend: trend,
@@ -128,7 +210,8 @@ exports.overview = wrapAsync(async (req, res) => {
       recentSales,
       lowStockProducts,
       outOfStockProducts,
-      topDebtors
+      topDebtors,
+      recentActivity
     }
   });
 });

@@ -5,6 +5,11 @@ const Customer = require('../models/Customer');
 const Loan = require('../models/Loan');
 const Payment = require('../models/Payment');
 const StockTransaction = require('../models/StockTransaction');
+const Expense = require('../models/Expense');
+const Purchase = require('../models/Purchase');
+const SupplierPayment = require('../models/SupplierPayment');
+const User = require('../models/User');
+const Order = require('../models/Order');
 const { wrapAsync } = require('../middleware/errorHandler');
 
 const dateRange = (q) => {
@@ -246,14 +251,176 @@ exports.financialReport = wrapAsync(async (req, res) => {
     { $group: { _id: '$method', total: { $sum: '$amount' }, count: { $sum: 1 } } }
   ]);
 
+  // Expenses for the same period
+  const expRange = dateRange(req.query) ? { date: dateRange(req.query) } : {};
+  const [expenseAgg] = await Expense.aggregate([
+    { $match: expRange },
+    { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }
+  ]);
+
+  // Purchases for the period (inventory/materials acquired - NOT operating expenses)
+  const [purchaseAgg] = await Purchase.aggregate([
+    { $match: dateRange(req.query) ? { createdAt: dateRange(req.query) } : {} },
+    { $group: { _id: null, total: { $sum: '$totalAmount' }, paid: { $sum: '$amountPaid' }, remaining: { $sum: '$remainingAmount' } } }
+  ]);
+
+  // Supplier payments
+  const [supplierPaymentAgg] = await SupplierPayment.aggregate([
+    { $match: dateRange(req.query) ? { createdAt: dateRange(req.query) } : {} },
+    { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }
+  ]);
+
+  const costOfGoodsSold = profitAgg[0]?.cost || 0;
+  const revenue = salesAgg?.totalSales || 0;
+  const grossProfit = Math.max(0, revenue - costOfGoodsSold);
+  const operatingExpenses = expenseAgg?.total || 0;
+  const netProfit = grossProfit - operatingExpenses;
+
   res.json({
     success: true,
     data: {
       sales: salesAgg || { totalSales: 0, totalPaid: 0, totalDiscounts: 0, salesCount: 0 },
-      grossProfit: profitAgg[0] ? Math.max(0, profitAgg[0].revenue - profitAgg[0].cost) : 0,
-      costOfGoodsSold: profitAgg[0]?.cost || 0,
+      grossProfit,
+      costOfGoodsSold,
+      operatingExpenses,
+      netProfit,
       loans: loanAgg || { creditGiven: 0, creditRepaid: 0, creditOutstanding: 0 },
-      paymentsByMethod
+      paymentsByMethod,
+      expenses: expenseAgg || { total: 0, count: 0 },
+      purchases: purchaseAgg || { total: 0, paid: 0, remaining: 0 },
+      supplierPayments: supplierPaymentAgg || { total: 0, count: 0 }
+    }
+  });
+});
+
+/** GET /api/reports/expenses */
+exports.expenseReport = wrapAsync(async (req, res) => {
+  const range = dateRange(req.query) ? { date: dateRange(req.query) } : {};
+
+  const [summary] = await Expense.aggregate([
+    { $match: range },
+    { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }
+  ]);
+
+  const byCategory = await Expense.aggregate([
+    { $match: range },
+    { $group: { _id: '$category', total: { $sum: '$amount' }, count: { $sum: 1 } } },
+    { $sort: { total: -1 } }
+  ]);
+
+  const byUser = await Expense.aggregate([
+    { $match: range },
+    { $group: { _id: '$createdBy', total: { $sum: '$amount' }, count: { $sum: 1 } } },
+    { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+    { $unwind: '$user' },
+    { $project: { _id: 1, total: 1, count: 1, name: '$user.fullName' } },
+    { $sort: { total: -1 } }
+  ]);
+
+  const byDay = await Expense.aggregate([
+    { $match: range },
+    { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$date' } }, total: { $sum: '$amount' }, count: { $sum: 1 } } },
+    { $sort: { _id: 1 } }
+  ]);
+
+  res.json({
+    success: true,
+    data: {
+      summary: summary || { total: 0, count: 0 },
+      byCategory, byUser, byDay
+    }
+  });
+});
+
+/** GET /api/reports/purchases */
+exports.purchaseReport = wrapAsync(async (req, res) => {
+  const range = dateRange(req.query) ? { createdAt: dateRange(req.query) } : {};
+
+  const [summary] = await Purchase.aggregate([
+    { $match: range },
+    {
+      $group: {
+        _id: null,
+        total: { $sum: '$totalAmount' },
+        paid: { $sum: '$amountPaid' },
+        remaining: { $sum: '$remainingAmount' },
+        count: { $sum: 1 },
+        cashPurchases: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'PAID'] }, '$totalAmount', 0] } },
+        creditPurchases: { $sum: { $cond: [{ $in: ['$paymentStatus', ['UNPAID', 'PARTIALLY_PAID']] }, '$remainingAmount', 0] } }
+      }
+    }
+  ]);
+
+  const [supplierPaymentAgg] = await SupplierPayment.aggregate([
+    { $match: range },
+    { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }
+  ]);
+
+  const byStatus = await Purchase.aggregate([
+    { $match: range },
+    { $group: { _id: '$paymentStatus', total: { $sum: '$totalAmount' }, count: { $sum: 1 } } }
+  ]);
+
+  const bySupplier = await Purchase.aggregate([
+    { $match: range },
+    { $group: { _id: '$supplier', total: { $sum: '$totalAmount' }, remaining: { $sum: '$remainingAmount' }, count: { $sum: 1 } } },
+    { $lookup: { from: 'suppliers', localField: '_id', foreignField: '_id', as: 'supplier' } },
+    { $unwind: '$supplier' },
+    { $project: { _id: 1, total: 1, remaining: 1, count: 1, name: '$supplier.name' } },
+    { $sort: { total: -1 } }
+  ]);
+
+  const overdue = await Purchase.aggregate([
+    { $match: { ...range, paymentStatus: { $in: ['UNPAID', 'PARTIALLY_PAID'] }, dueDate: { $lt: new Date() } } },
+    { $group: { _id: null, total: { $sum: '$remainingAmount' }, count: { $sum: 1 } } }
+  ]);
+
+  res.json({
+    success: true,
+    data: {
+      summary: summary || { total: 0, paid: 0, remaining: 0, count: 0, cashPurchases: 0, creditPurchases: 0 },
+      supplierPayments: supplierPaymentAgg || { total: 0, count: 0 },
+      byStatus, bySupplier,
+      overdue: overdue[0] || { total: 0, count: 0 }
+    }
+  });
+});
+
+/** GET /api/reports/user-performance */
+exports.userPerformanceReport = wrapAsync(async (req, res) => {
+  const range = dateRange(req.query) ? { createdAt: dateRange(req.query) } : {};
+  const rangeDate = dateRange(req.query) ? { date: dateRange(req.query) } : {};
+
+  const salesByUser = await Sale.aggregate([
+    { $match: { ...range, status: 'COMPLETED' } },
+    { $group: { _id: '$cashier', count: { $sum: 1 }, total: { $sum: '$total' } } }
+  ]);
+  const ordersByUser = await Order.aggregate([
+    { $match: range },
+    { $group: { _id: '$createdBy', count: { $sum: 1 } } }
+  ]);
+  const expensesByUser = await Expense.aggregate([
+    { $match: rangeDate },
+    { $group: { _id: '$createdBy', count: { $sum: 1 }, total: { $sum: '$amount' } } }
+  ]);
+  const purchasesByUser = await Purchase.aggregate([
+    { $match: range },
+    { $group: { _id: '$createdBy', count: { $sum: 1 }, total: { $sum: '$totalAmount' } } }
+  ]);
+
+  const users = await User.find({ isActive: true }).select('fullName');
+
+  const map = {};
+  for (const u of users) map[u._id.toString()] = { user: u.fullName, orders: 0, sales: 0, expenses: 0, purchases: 0, transactionValue: 0 };
+  for (const x of salesByUser) if (map[x._id?.toString()]) { map[x._id.toString()].sales = x.count; map[x._id.toString()].transactionValue += x.total; }
+  for (const x of ordersByUser) if (map[x._id?.toString()]) map[x._id.toString()].orders = x.count;
+  for (const x of expensesByUser) if (map[x._id?.toString()]) { map[x._id.toString()].expenses = x.count; map[x._id.toString()].transactionValue += x.total; }
+  for (const x of purchasesByUser) if (map[x._id?.toString()]) { map[x._id.toString()].purchases = x.count; map[x._id.toString()].transactionValue += x.total; }
+
+  res.json({
+    success: true,
+    data: {
+      users: Object.values(map).sort((a, b) => b.transactionValue - a.transactionValue)
     }
   });
 });

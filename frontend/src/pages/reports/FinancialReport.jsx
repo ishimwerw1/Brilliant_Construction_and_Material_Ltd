@@ -41,6 +41,13 @@ export default function FinancialReport() {
       </Row>
 
       <Row className="g-3 mb-4">
+        <Col md={3}><StatCard icon="bi-receipt-cutoff" label="Operating Expenses" value={formatMoney(data.operatingExpenses || 0)} color="danger" sub={`${formatMoney(data.expenses?.count || 0)} records`} /></Col>
+        <Col md={3}><StatCard icon="bi-arrow-repeat" label="Net Profit" value={formatMoney(data.netProfit ?? 0)} color={data.netProfit >= 0 ? 'primary' : 'danger'} sub="Gross Profit − Expenses" /></Col>
+        <Col md={3}><StatCard icon="bi-cart4" label="Total Purchases" value={formatMoney(data.purchases?.total || 0)} color="info" sub={`Paid: ${formatMoney(data.purchases?.paid || 0)}`} /></Col>
+        <Col md={3}><StatCard icon="bi-cash-coin" label="Supplier Payments" value={formatMoney(data.supplierPayments?.total || 0)} color="warning" sub={`Remaining debt: ${formatMoney(data.purchases?.remaining || 0)}`} /></Col>
+      </Row>
+
+      <Row className="g-3 mb-4">
         <Col md={4}><StatCard icon="bi-arrow-up-right-circle" label="Credit Given" value={formatMoney(data.loans.creditGiven)} color="warning" /></Col>
         <Col md={4}><StatCard icon="bi-arrow-down-left-circle" label="Credit Repaid" value={formatMoney(data.loans.creditRepaid)} color="success" /></Col>
         <Col md={4}><StatCard icon="bi-cash-coin" label="Credit Outstanding" value={formatMoney(data.loans.creditOutstanding)} color="danger" /></Col>
@@ -67,10 +74,14 @@ export default function FinancialReport() {
         </Col>
         <Col lg={6}>
           <Card body className="bg-light h-100">
-            <h6 className="fw-semibold"><i className="bi bi-info-circle me-2 text-primary" />Notes</h6>
+            <h6 className="fw-semibold"><i className="bi bi-info-circle me-2 text-primary" />Accounting Notes</h6>
             <ul className="small text-muted ps-3 mb-0">
-              <li className="mb-2">Gross profit is estimated using each product's current buying price at time of aggregation.</li>
-              <li className="mb-2">Credit outstanding = unpaid balances on non-cancelled loans.</li>
+              <li className="mb-2"><strong>Revenue</strong> — money generated from sales.</li>
+              <li className="mb-2"><strong>Cost of Goods Sold</strong> — estimated using each product's buying price.</li>
+              <li className="mb-2"><strong>Gross Profit</strong> = Sales Revenue − COGS.</li>
+              <li className="mb-2"><strong>Operating Expenses</strong> — transport, rent, food, electricity, salaries, etc.</li>
+              <li className="mb-2"><strong>Net Profit</strong> = Gross Profit − Operating Expenses.</li>
+              <li className="mb-2">Supplier credit purchases are NOT operating expenses — they are tracked as supplier debt/payables.</li>
               <li>Use date filters to narrow the period. Print to PDF for record keeping.</li>
             </ul>
           </Card>
