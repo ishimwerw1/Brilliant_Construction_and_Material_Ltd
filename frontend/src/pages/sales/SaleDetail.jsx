@@ -97,6 +97,21 @@ export default function SaleDetail() {
             <div className="small"><span className="text-muted">Cashier:</span> <strong>{sale.cashier?.fullName}</strong></div>
             <div className="small"><span className="text-muted">Payment Method:</span> <StatusBadge value={sale.paymentMethod} /></div>
             {sale.paymentReference && <div className="small"><span className="text-muted">Ref:</span> {sale.paymentReference}</div>}
+            {sale.saleType && sale.saleType !== 'NORMAL' && (
+              <div className="small"><span className="text-muted">Type:</span> <StatusBadge value={sale.saleType} /></div>
+            )}
+            {sale.order?._id && (
+              <div className="small">
+                <span className="text-muted">Source:</span>{' '}
+                <Link to="/orders" className="text-decoration-none">{sale.order.orderNumber || 'Order'}</Link>
+              </div>
+            )}
+            {sale.onDemand?._id && (
+              <div className="small">
+                <span className="text-muted">Source:</span>{' '}
+                <Link to="/on-demand" className="text-decoration-none">{sale.onDemand.transactionNumber || 'On-Demand'}</Link>
+              </div>
+            )}
             {sale.notes && <div className="small text-muted mt-1 fst-italic">{sale.notes}</div>}
           </div>
         </div>
@@ -107,7 +122,9 @@ export default function SaleDetail() {
             <tr>
               <th>#</th><th>Product</th><th>SKU</th>
               <th className="text-center">Qty</th><th className="text-end">Unit Price</th>
+              <th className="text-end">Unit Cost</th>
               <th className="text-end">Discount</th><th className="text-end">Subtotal</th>
+              <th className="text-end">Profit</th>
             </tr>
           </thead>
           <tbody>
@@ -118,8 +135,12 @@ export default function SaleDetail() {
                 <td><code className="small">{item.sku}</code></td>
                 <td className="text-center">{item.quantity}</td>
                 <td className="text-end">{Number(item.unitPrice).toLocaleString()}</td>
+                <td className="text-end text-muted">{item.costPriceAtSale != null ? Number(item.costPriceAtSale).toLocaleString() : '-'}</td>
                 <td className="text-end">{item.discount ? Number(item.discount).toLocaleString() : '-'}</td>
                 <td className="text-end fw-semibold">{Number(item.subtotal).toLocaleString()}</td>
+                <td className={`text-end small ${(item.profit ?? 0) >= 0 ? 'text-success' : 'text-danger'}`}>
+                  {(item.profit ?? 0) >= 0 ? '+' : ''}{Number(item.profit ?? 0).toLocaleString()}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -130,6 +151,12 @@ export default function SaleDetail() {
           <div className="col-md-5">
             <table className="table table-sm">
               <tbody>
+                {sale.totalCost != null && (
+                  <tr><td>Total Cost</td><td className="text-end text-muted">{formatMoney(sale.totalCost)}</td></tr>
+                )}
+                {sale.totalProfit != null && (
+                  <tr><td>Gross Profit</td><td className={`text-end fw-semibold ${sale.totalProfit >= 0 ? 'text-success' : 'text-danger'}`}>{sale.totalProfit >= 0 ? '+' : ''}{formatMoney(sale.totalProfit)}</td></tr>
+                )}
                 <tr><td>Subtotal</td><td className="text-end">{formatMoney(sale.subtotal)}</td></tr>
                 {sale.discount > 0 && <tr><td>Discount</td><td className="text-end text-danger">−{formatMoney(sale.discount)}</td></tr>}
                 <tr className="fs-5 fw-bold"><td>TOTAL</td><td className="text-end">{formatMoney(sale.total)}</td></tr>
@@ -140,9 +167,9 @@ export default function SaleDetail() {
                 </tr>
               </tbody>
             </table>
-            {sale.paymentMethod === 'LOAN' && (
+            {(sale.paymentMethod === 'LOAN' || sale.balance > 0) && (
               <Alert variant="warning" className="py-2 small text-center fw-semibold mb-0">
-                PAYMENT METHOD: LOAN — OUTSTANDING BALANCE: {formatMoney(sale.balance)}
+                CREDIT SALE — OUTSTANDING BALANCE: {formatMoney(sale.balance)}
               </Alert>
             )}
           </div>

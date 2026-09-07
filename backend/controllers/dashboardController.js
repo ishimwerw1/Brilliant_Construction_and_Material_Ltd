@@ -24,6 +24,15 @@ exports.overview = wrapAsync(async (req, res) => {
   const today = startOfDay();
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
+  const [onDemandAgg] = await require('../models/OnDemand').aggregate([
+    { $match: { createdAt: { $gte: monthStart }, status: { $ne: 'CANCELLED' } } },
+    { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$totalAmount' }, cost: { $sum: '$totalCost' }, profit: { $sum: '$totalProfit' } } }
+  ]);
+  const [todayOnDemandAgg] = await require('../models/OnDemand').aggregate([
+    { $match: { createdAt: { $gte: today }, status: { $ne: 'CANCELLED' } } },
+    { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$totalAmount' }, profit: { $sum: '$totalProfit' } } }
+  ]);
+
   const [
     totalProducts,
     activeProducts,
@@ -95,17 +104,20 @@ exports.overview = wrapAsync(async (req, res) => {
     { $sort: { _id: 1 } }
   ]);
 
-  // COGS & Gross Profit for current month
+  // COGS & Gross Profit for current month (authoritative transaction snapshots; legacy falls back to product price)
   const monthProfitAgg = await Sale.aggregate([
     { $match: { createdAt: { $gte: monthStart }, status: 'COMPLETED' } },
     { $unwind: '$items' },
-    {
-      $lookup: { from: 'products', localField: 'items.product', foreignField: '_id', as: 'product' }
-    },
-    { $unwind: '$product' },
+    { $lookup: { from: 'products', localField: 'items.product', foreignField: '_id', as: 'product' } },
+    { $unwind: { path: '$product', preserveNullAndEmptyArrays: true } },
     {
       $project: {
-        cost: { $multiply: ['$product.buyingPrice', '$items.quantity'] },
+        cost: {
+          $ifNull: [
+            { $cond: [{ $gt: [{ $ifNull: ['$items.totalCost', 0] }, 0] }, '$items.totalCost', null] },
+            { $multiply: [{ $ifNull: ['$product.buyingPrice', 0] }, '$items.quantity'] }
+          ]
+        },
         revenue: '$items.subtotal'
       }
     },
@@ -202,7 +214,12 @@ exports.overview = wrapAsync(async (req, res) => {
         ordersToday: ordersToday?.count || 0,
         activeUsers,
         stockValueCost: stockValueAgg?.cost || 0,
-        stockValueRetail: stockValueAgg?.retail || 0
+        stockValueRetail: stockValueAgg?.retail || 0,
+        monthOnDemandCount: onDemandAgg?.count || 0,
+        monthOnDemandRevenue: onDemandAgg?.revenue || 0,
+        monthOnDemandProfit: onDemandAgg?.profit || 0,
+        todayOnDemandCount: todayOnDemandAgg?.count || 0,
+        todayOnDemandRevenue: todayOnDemandAgg?.revenue || 0
       },
       todayByMethod: todayPayments[0] || { cash: 0, momo: 0, bank: 0, credit: 0 },
       salesTrend: trend,

@@ -7,16 +7,19 @@ const MAP = {
   ACTIVE: { cls: 'badge-soft-info', key: 'active' },
   INACTIVE: { cls: 'badge-soft-secondary', key: 'inactive' },
   PENDING: { cls: 'badge-soft-warning', key: 'pendingOrders' },
+  CONFIRMED: { cls: 'badge-soft-info', key: 'confirmed' },
   COMPLETED: { cls: 'badge-soft-success', key: 'paid' },
   CANCELLED: { cls: 'badge-soft-danger', key: 'cancel' },
   OVERDUE: { cls: 'badge-soft-danger', key: 'overdueLoans' },
   NORMAL: { cls: 'badge-soft-success', key: 'normal' },
+  ON_DEMAND: { cls: 'badge-soft-warning', key: 'onDemand' },
   LOW_STOCK: { cls: 'badge-soft-warning', key: 'low' },
   OUT_OF_STOCK: { cls: 'badge-soft-danger', key: 'outOfStock' },
   CASH: { cls: 'badge-soft-success', key: 'cash' },
   MOMO: { cls: 'badge-soft-info', key: 'momo' },
   BANK: { cls: 'badge-soft-primary', key: 'bank' },
   LOAN: { cls: 'badge-soft-warning', key: 'loan' },
+  CREDIT: { cls: 'badge-soft-warning', key: 'loan' },
   MIXED: { cls: 'badge-soft-secondary', key: 'paymentMethod' }
 }
 

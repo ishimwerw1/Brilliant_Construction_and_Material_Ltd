@@ -296,5 +296,8 @@
     "deleteConfirmTitle": "Gusiba Umudugaro?",
     "deleteWarning": "Urifuza gusiba umudugaro"
   },
-  "backups": "Amadugaro"
+  "backups": "Amadugaro",
+  "confirmed": "Byemejwe",
+  "onDemand": "Kwihisha",
+  "onDemandSale": "Kwihisha"
 }

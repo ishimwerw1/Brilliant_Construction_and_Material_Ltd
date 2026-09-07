@@ -60,7 +60,7 @@ export default function Payments() {
             {['ALL', 'CASH', 'MOMO', 'BANK'].map((m) => <option key={m} value={m}>{m === 'ALL' ? 'All Methods' : m}</option>)}
           </Form.Select>
           <Form.Select size="sm" value={type} onChange={(e) => { setType(e.target.value); setPage(1) }} style={{ maxWidth: 190 }}>
-            {['ALL', 'SALE_PAYMENT', 'LOAN_REPAYMENT'].map((tp) => <option key={tp} value={tp}>{tp === 'ALL' ? 'All Types' : tp.replace(/_/g, ' ')}</option>)}
+            {['ALL', 'SALE_PAYMENT', 'LOAN_REPAYMENT', 'ORDER_PAYMENT', 'ON_DEMAND_PAYMENT'].map((tp) => <option key={tp} value={tp}>{tp === 'ALL' ? 'All Types' : tp.replace(/_/g, ' ')}</option>)}
           </Form.Select>
           <Form.Control size="sm" type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1) }} style={{ maxWidth: 155 }} />
           <Form.Control size="sm" type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1) }} style={{ maxWidth: 155 }} />
@@ -80,6 +80,8 @@ export default function Payments() {
             )},
             { key: 'reference', label: 'Reference', render: (p) => p.reference ? <code className="small">{p.reference}</code> : '-' },
             { key: 'loan', label: 'Loan', render: (p) => p.loan?.loanNumber ? <code className="small">{p.loan.loanNumber}</code> : '-' },
+            { key: 'order', label: 'Order', render: (p) => p.order?.orderNumber ? <code className="small">{p.order.orderNumber}</code> : '-' },
+            { key: 'onDemand', label: 'On-Demand', render: (p) => p.onDemand?.transactionNumber ? <code className="small">{p.onDemand.transactionNumber}</code> : '-' },
             { key: 'receivedBy', label: 'Received By', render: (p) => <span className="small">{p.receivedBy?.fullName}</span> }
           ]}
           data={payments}

@@ -100,12 +100,28 @@ exports.salesReport = wrapAsync(async (req, res) => {
     { $sort: { revenue: -1 } }
   ]);
 
+  const bySaleType = await Sale.aggregate([
+    { $match: match },
+    {
+      $group: {
+        _id: { $ifNull: ['$saleType', 'NORMAL'] },
+        count: { $sum: 1 },
+        revenue: { $sum: '$total' },
+        cost: { $sum: '$totalCost' },
+        profit: { $sum: '$totalProfit' },
+        received: { $sum: '$amountPaid' },
+        outstanding: { $sum: '$balance' }
+      }
+    },
+    { $sort: { _id: 1 } }
+  ]);
+
   res.json({
     success: true,
     data: {
       period: { from, to },
       summary: summary || { count: 0, revenue: 0, received: 0, outstanding: 0, discounts: 0 },
-      byDay, byCashier, byMethod, topProducts, byCategory
+      byDay, byCashier, byMethod, topProducts, byCategory, bySaleType
     }
   });
 });
@@ -224,22 +240,28 @@ exports.financialReport = wrapAsync(async (req, res) => {
     { $group: { _id: null, totalSales: { $sum: '$total' }, totalPaid: { $sum: '$amountPaid' }, totalDiscounts: { $sum: '$discount' }, salesCount: { $sum: 1 } } }
   ]);
 
-  // Gross profit: sale price vs buying price where cost is known
+  // Gross profit: the transaction snapshot (costPriceAtSale/sellingPriceAtSale) is authoritative.
+  // Legacy rows (no snapshot) fall back to the product's buying price at reporting time.
   const profitAgg = await Sale.aggregate([
     { $match: range },
     { $unwind: '$items' },
-    {
-      $lookup: { from: 'products', localField: 'items.product', foreignField: '_id', as: 'product' }
-    },
-    { $unwind: '$product' },
+    { $lookup: { from: 'products', localField: 'items.product', foreignField: '_id', as: 'product' } },
+    { $unwind: { path: '$product', preserveNullAndEmptyArrays: true } },
     {
       $project: {
-        cost: { $multiply: ['$product.buyingPrice', '$items.quantity'] },
+        cost: {
+          $ifNull: [
+            { $cond: [{ $gt: [{ $ifNull: ['$items.totalCost', 0] }, 0] }, '$items.totalCost', null] },
+            { $multiply: [{ $ifNull: ['$product.buyingPrice', 0] }, '$items.quantity'] }
+          ]
+        },
         revenue: '$items.subtotal'
       }
     },
     { $group: { _id: null, cost: { $sum: '$cost' }, revenue: { $sum: '$revenue' } } }
   ]);
+
+  const costOfGoodsSold = profitAgg[0]?.cost || 0;
 
   const [loanAgg] = await Loan.aggregate([
     { $match: {} },
@@ -258,6 +280,23 @@ exports.financialReport = wrapAsync(async (req, res) => {
     { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }
   ]);
 
+  // Breakdown by sale type (NORMAL / ORDER / ON_DEMAND) with actual cost & profit snapshots.
+  const bySaleType = await Sale.aggregate([
+    { $match: range },
+    {
+      $group: {
+        _id: { $ifNull: ['$saleType', 'NORMAL'] },
+        count: { $sum: 1 },
+        revenue: { $sum: '$total' },
+        cost: { $sum: '$totalCost' },
+        profit: { $sum: '$totalProfit' },
+        received: { $sum: '$amountPaid' },
+        outstanding: { $sum: '$balance' }
+      }
+    },
+    { $sort: { _id: 1 } }
+  ]);
+
   // Purchases for the period (inventory/materials acquired - NOT operating expenses)
   const [purchaseAgg] = await Purchase.aggregate([
     { $match: dateRange(req.query) ? { createdAt: dateRange(req.query) } : {} },
@@ -270,7 +309,6 @@ exports.financialReport = wrapAsync(async (req, res) => {
     { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }
   ]);
 
-  const costOfGoodsSold = profitAgg[0]?.cost || 0;
   const revenue = salesAgg?.totalSales || 0;
   const grossProfit = Math.max(0, revenue - costOfGoodsSold);
   const operatingExpenses = expenseAgg?.total || 0;
@@ -288,7 +326,8 @@ exports.financialReport = wrapAsync(async (req, res) => {
       paymentsByMethod,
       expenses: expenseAgg || { total: 0, count: 0 },
       purchases: purchaseAgg || { total: 0, paid: 0, remaining: 0 },
-      supplierPayments: supplierPaymentAgg || { total: 0, count: 0 }
+      supplierPayments: supplierPaymentAgg || { total: 0, count: 0 },
+      bySaleType
     }
   });
 });
@@ -382,6 +421,43 @@ exports.purchaseReport = wrapAsync(async (req, res) => {
       supplierPayments: supplierPaymentAgg || { total: 0, count: 0 },
       byStatus, bySupplier,
       overdue: overdue[0] || { total: 0, count: 0 }
+    }
+  });
+});
+
+/** GET /api/reports/on-demand - On-demand sales summary */
+exports.onDemandReport = wrapAsync(async (req, res) => {
+  const rangeDate = dateRange(req.query) ? { createdAt: dateRange(req.query) } : {};
+  const [summary] = await require('../models/OnDemand').aggregate([
+    { $match: { ...rangeDate, status: { $ne: 'CANCELLED' } } },
+    {
+      $group: {
+        _id: null,
+        count: { $sum: 1 },
+        revenue: { $sum: '$totalAmount' },
+        cost: { $sum: '$totalCost' },
+        profit: { $sum: '$totalProfit' },
+        received: { $sum: '$amountPaid' },
+        customerOutstanding: { $sum: '$balance' },
+        supplierBalance: { $sum: '$supplierBalance' }
+      }
+    }
+  ]);
+
+  const bySupplier = await require('../models/OnDemand').aggregate([
+    { $match: { ...rangeDate, status: { $ne: 'CANCELLED' } } },
+    { $group: { _id: '$supplier', name: { $first: '$supplierName' }, count: { $sum: 1 }, cost: { $sum: '$totalCost' }, profit: { $sum: '$totalProfit' } } },
+    { $lookup: { from: 'suppliers', localField: '_id', foreignField: '_id', as: 'supplier' } },
+    { $unwind: '$supplier' },
+    { $project: { name: '$supplier.name', count: 1, cost: 1, profit: 1 } },
+    { $sort: { profit: -1 } }
+  ]);
+
+  res.json({
+    success: true,
+    data: {
+      summary: summary || { count: 0, revenue: 0, cost: 0, profit: 0, received: 0, customerOutstanding: 0, supplierBalance: 0 },
+      bySupplier
     }
   });
 });

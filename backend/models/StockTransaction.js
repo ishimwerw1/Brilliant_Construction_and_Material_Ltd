@@ -8,7 +8,7 @@ const stockTransactionSchema = new mongoose.Schema(
     type: {
       type: String,
       required: true,
-      enum: ['OPENING_STOCK', 'STOCK_IN', 'SALE', 'RETURN', 'DAMAGED', 'LOST', 'ADJUSTMENT', 'TRANSFER', 'SALE_CANCEL']
+      enum: ['OPENING_STOCK', 'STOCK_IN', 'STOCK_IN_ON_DEMAND', 'SALE', 'ON_DEMAND_SALE', 'RETURN', 'DAMAGED', 'LOST', 'ADJUSTMENT', 'TRANSFER', 'SALE_CANCEL']
     },
     quantity: { type: Number, required: true },
     previousQuantity: { type: Number, required: true },

@@ -4,7 +4,7 @@ const notificationSchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: ['LOW_STOCK', 'OUT_OF_STOCK', 'NEW_SALE', 'NEW_ORDER', 'LOAN_CREATED', 'LOAN_REPAYMENT', 'LOAN_OVERDUE', 'STOCK_IN', 'STOCK_ADJUSTMENT', 'SYSTEM'],
+      enum: ['LOW_STOCK', 'OUT_OF_STOCK', 'NEW_SALE', 'NEW_ORDER', 'LOAN_CREATED', 'LOAN_REPAYMENT', 'LOAN_OVERDUE', 'STOCK_IN', 'STOCK_ADJUSTMENT', 'NEW_ON_DEMAND', 'ON_DEMAND_COMPLETED', 'SYSTEM'],
       required: true
     },
     title: { type: String, required: true },

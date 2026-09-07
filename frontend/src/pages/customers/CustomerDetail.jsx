@@ -16,7 +16,7 @@ export default function CustomerDetail() {
   }, [id, navigate])
 
   if (!data) return <Loading full />
-  const { customer, sales, payments, loans } = data
+  const { customer, sales, orders, onDemand, payments, loans } = data
 
   return (
     <div>
@@ -48,14 +48,16 @@ export default function CustomerDetail() {
           <Card>
             <Card.Header className="bg-white fw-semibold small"><i className="bi bi-receipt me-2 text-primary" />Purchase History</Card.Header>
             <Table size="sm" hover responsive className="mb-0 align-middle">
-              <thead><tr><th>Invoice</th><th>Date</th><th>Total</th><th>Paid</th><th>Status</th></tr></thead>
+              <thead><tr><th>Invoice</th><th>Date</th><th>Type</th><th>Total</th><th>Profit</th><th>Paid</th><th>Status</th></tr></thead>
               <tbody>
-                {sales.length === 0 && <tr><td colSpan={5} className="text-center text-muted py-3">No purchases yet</td></tr>}
+                {sales.length === 0 && <tr><td colSpan={7} className="text-center text-muted py-3">No purchases yet</td></tr>}
                 {sales.map((s) => (
                   <tr key={s._id}>
                     <td><Link to={`/sales/${s._id}`} className="fw-semibold text-decoration-none">{s.saleNumber}</Link></td>
                     <td className="small">{new Date(s.createdAt).toLocaleDateString()}</td>
+                    <td><StatusBadge value={s.saleType} /></td>
                     <td>{formatMoney(s.total)}</td>
+                    <td className={`fw-semibold ${s.profit < 0 ? 'text-danger' : 'text-success'}`}>{formatMoney(s.profit)}</td>
                     <td>{formatMoney(s.amountPaid)}</td>
                     <td>{s.status === 'CANCELLED' ? <StatusBadge value="CANCELLED" /> : <StatusBadge value={s.paymentStatus} />}</td>
                   </tr>
@@ -67,6 +69,50 @@ export default function CustomerDetail() {
 
         <Col lg={6}>
           <Card className="mb-3">
+            <Card.Header className="bg-white fw-semibold small"><i className="bi bi-clipboard-check me-2 text-info" />Order History</Card.Header>
+            <Table size="sm" hover responsive className="mb-0 align-middle">
+              <thead><tr><th>Order</th><th>Date</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead>
+              <tbody>
+                {orders.length === 0 && <tr><td colSpan={6} className="text-center text-muted py-3">No orders</td></tr>}
+                {orders.map((o) => (
+                  <tr key={o._id}>
+                    <td><Link to="/orders" className="fw-semibold text-decoration-none">{o.orderNumber}</Link></td>
+                    <td className="small">{new Date(o.createdAt).toLocaleDateString()}</td>
+                    <td>{formatMoney(o.total)}</td>
+                    <td>{formatMoney(o.amountPaid)}</td>
+                    <td className="text-danger fw-semibold">{formatMoney(o.balance)}</td>
+                    <td><StatusBadge value={o.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </Card>
+
+          <Card className="mb-3">
+            <Card.Header className="bg-white fw-semibold small"><i className="bi bi-truck me-2 text-warning" />On-Demand Purchases</Card.Header>
+            <Table size="sm" hover responsive className="mb-0 align-middle">
+              <thead><tr><th>Ref</th><th>Date</th><th>Supplier</th><th>Total</th><th>Paid</th><th>Status</th></tr></thead>
+              <tbody>
+                {onDemand.length === 0 && <tr><td colSpan={6} className="text-center text-muted py-3">No on-demand purchases</td></tr>}
+                {onDemand.map((d) => (
+                  <tr key={d._id}>
+                    <td><Link to="/on-demand" className="fw-semibold text-decoration-none">{d.transactionNumber}</Link></td>
+                    <td className="small">{new Date(d.createdAt).toLocaleDateString()}</td>
+                    <td className="small">{d.supplierName}</td>
+                    <td>{formatMoney(d.total)}</td>
+                    <td>{formatMoney(d.customerPaid)}</td>
+                    <td><StatusBadge value={d.sale?.saleType ? 'ON_DEMAND' : d.paymentStatus} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </Card>
+        </Col>
+      </Row>
+
+      <Row className="g-3">
+        <Col lg={6}>
+          <Card>
             <Card.Header className="bg-white fw-semibold small"><i className="bi bi-wallet2 me-2 text-success" />Payment History</Card.Header>
             <Table size="sm" hover responsive className="mb-0 align-middle">
               <thead><tr><th>Receipt</th><th>Date</th><th>Amount</th><th>Method</th><th>Type</th></tr></thead>
@@ -84,7 +130,9 @@ export default function CustomerDetail() {
               </tbody>
             </Table>
           </Card>
+        </Col>
 
+        <Col lg={6}>
           <Card>
             <Card.Header className="bg-white fw-semibold small"><i className="bi bi-cash-coin me-2 text-danger" />Loan History</Card.Header>
             <Table size="sm" hover responsive className="mb-0 align-middle">

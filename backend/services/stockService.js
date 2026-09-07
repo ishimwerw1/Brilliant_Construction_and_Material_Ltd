@@ -4,8 +4,8 @@ const StockTransaction = require('../models/StockTransaction');
 const ApiError = require('../utils/ApiError');
 const { checkLowStock } = require('./notificationService');
 
-const IN_TYPES = ['STOCK_IN', 'RETURN', 'OPENING_STOCK'];
-const OUT_TYPES = ['SALE', 'DAMAGED', 'LOST'];
+const IN_TYPES = ['STOCK_IN', 'STOCK_IN_ON_DEMAND', 'RETURN', 'OPENING_STOCK'];
+const OUT_TYPES = ['SALE', 'ON_DEMAND_SALE', 'DAMAGED', 'LOST'];
 
 /**
  * Applies a stock movement to a product, creating a traceable transaction.

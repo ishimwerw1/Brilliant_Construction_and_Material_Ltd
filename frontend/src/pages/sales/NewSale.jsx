@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Card, Row, Col, Form, Button, InputGroup, ListGroup, Badge, Alert, Modal } from 'react-bootstrap'
+import { Card, Row, Col, Form, Button, InputGroup, ListGroup, Badge, Alert, Modal, OverlayTrigger, Tooltip } from 'react-bootstrap'
 import { useNavigate } from 'react-router-dom'
 import api, { getError } from '../../api/client'
 import { formatMoney } from '../../context/LanguageContext'
+
+const PAYMENT_METHODS = [
+  ['CASH', 'bi-cash-stack', 'Cash', 'Cash on the spot'],
+  ['MOMO', 'bi-phone', 'MoMo', 'Mobile money transfer'],
+  ['BANK', 'bi-bank', 'Bank', 'Bank transfer / slip'],
+  ['CREDIT', 'bi-journal-text', 'Credit', 'Pay whole amount later'],
+  ['LOAN', 'bi-credit-card', 'Loan', 'Down payment + loan'],
+]
 
 export default function NewSale() {
   const navigate = useNavigate()
@@ -17,6 +25,7 @@ export default function NewSale() {
   const [discount, setDiscount] = useState(0)
   const [paymentMethod, setPaymentMethod] = useState('CASH')
   const [amountPaidInput, setAmountPaidInput] = useState('')
+  const [payFull, setPayFull] = useState(true)
   const [paymentReference, setPaymentReference] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [notes, setNotes] = useState('')
@@ -56,10 +65,18 @@ export default function NewSale() {
     ).slice(0, 12)
   }, [products, productSearch])
 
+  const isCreditType = paymentMethod === 'CREDIT' || paymentMethod === 'LOAN'
+
   const subtotal = cart.reduce((s, i) => s + i.quantity * i.unitPrice - i.discount, 0)
+  const totalCost = cart.reduce((s, i) => s + i.quantity * i.costPrice, 0)
   const total = Math.max(0, subtotal - Number(discount || 0))
-  const paidAmount = paymentMethod === 'LOAN' ? Number(amountPaidInput || 0) : total
-  const balance = Math.max(0, total - paidAmount)
+  const estimatedProfit = total - totalCost
+  const maxPaid = total
+
+  const amountPaid = payFull
+    ? (isCreditType ? 0 : total)
+    : Math.min(Math.max(0, Number(amountPaidInput || 0)), maxPaid)
+  const balance = Math.max(0, total - amountPaid)
 
   const addToCart = (p) => {
     setError('')
@@ -72,7 +89,14 @@ export default function NewSale() {
         }
         return prev.map((i) => i.product === p._id ? { ...i, quantity: i.quantity + 1 } : i)
       }
-      return [...prev, { product: p._id, productName: p.name, sku: p.sku, unit: p.unit, quantity: 1, unitPrice: p.sellingPrice, discount: 0, available: p.quantity }]
+      return [...prev, {
+        product: p._id, productName: p.name, sku: p.sku, unit: p.unit,
+        quantity: 1,
+        unitPrice: p.sellingPrice,
+        costPrice: Number(p.buyingPrice) || 0,
+        discount: 0,
+        available: p.quantity
+      }]
     })
   }
 
@@ -86,6 +110,22 @@ export default function NewSale() {
     }))
   }
 
+  const updateUnitPrice = (productId, value) => {
+    const v = Math.max(0, Number(value) || 0)
+    setCart((prev) => prev.map((i) => i.product === productId ? { ...i, unitPrice: v } : i))
+  }
+
+  const updateCostPrice = (productId, value) => {
+    const v = Math.max(0, Number(value) || 0)
+    setCart((prev) => prev.map((i) => i.product === productId ? { ...i, costPrice: v } : i))
+  }
+
+  const switchMethod = (m) => {
+    setPaymentMethod(m)
+    setPayFull(m === 'CASH' || m === 'MOMO' || m === 'BANK')
+    setAmountPaidInput('')
+  }
+
   const submitSale = async () => {
     setSaving(true)
     setError('')
@@ -94,12 +134,12 @@ export default function NewSale() {
         customer: customer?._id,
         customerName: customer ? undefined : newCustomer.name,
         customerPhone: customer ? undefined : newCustomer.phone,
-        items: cart.map(({ product, quantity, unitPrice, discount }) => ({ product, quantity, unitPrice, discount })),
+        items: cart.map(({ product, quantity, unitPrice, costPrice, discount }) => ({ product, quantity, unitPrice, costPrice, discount })),
         discount: Number(discount || 0),
-        amountPaid: paidAmount,
+        amountPaid,
         paymentMethod,
         paymentReference: paymentReference || undefined,
-        dueDate: dueDate || undefined,
+        dueDate: balance > 0 ? dueDate || undefined : undefined,
         notes: notes || undefined
       }
       const { data } = await api.post('/sales', payload)
@@ -115,7 +155,7 @@ export default function NewSale() {
 
   const resetAll = () => {
     setCompletedSale(null)
-    setCart([]); setDiscount(0); setPaymentMethod('CASH'); setAmountPaidInput('')
+    setCart([]); setDiscount(0); setPaymentMethod('CASH'); setAmountPaidInput(''); setPayFull(true)
     setPaymentReference(''); setDueDate(''); setNotes(''); setCustomer(null)
     setNewCustomer({ name: '', phone: '' }); setCustomerQuery(''); setError('')
   }
@@ -127,7 +167,7 @@ export default function NewSale() {
         <div className="mb-3"><i className="bi bi-check-circle-fill text-success" style={{ fontSize: '4rem' }} /></div>
         <h3 className="fw-bold" style={{ color: '#0d3b66' }}>Sale {completedSale.saleNumber} completed</h3>
         <p className="text-muted">
-          Total: <strong>{formatMoney(completedSale.total)}</strong> · Paid: <strong>{formatMoney(completedSale.amountPaid)}</strong>
+          {formatMoney(completedSale.totalCost)} cost · <strong className="text-success">+{formatMoney(completedSale.totalProfit)} profit</strong> · Total: <strong>{formatMoney(completedSale.total)}</strong> · Paid: <strong>{formatMoney(completedSale.amountPaid)}</strong>
           {completedSale.balance > 0 && <> · Balance: <strong className="text-danger">{formatMoney(completedSale.balance)}</strong></>}
         </p>
         <div className="d-flex justify-content-center gap-2 mt-3">
@@ -246,33 +286,74 @@ export default function NewSale() {
               <span className="fw-semibold"><i className="bi bi-cart3 me-2" />Cart ({cart.length})</span>
               {cart.length > 0 && <Button variant="link" size="sm" className="p-0 text-danger text-decoration-none" onClick={() => setCart([])}>clear</Button>}
             </Card.Header>
-            <Card.Body style={{ maxHeight: 300, overflowY: 'auto' }}>
+            <Card.Body style={{ maxHeight: 340, overflowY: 'auto' }}>
               {cart.length === 0 ? (
                 <div className="text-center text-muted py-4 small"><i className="bi bi-cart-x fs-2 d-block opacity-50 mb-1" />Cart is empty. Add products from the left.</div>
-              ) : cart.map((item) => (
-                <div key={item.product} className="cart-line py-2">
-                  <div className="d-flex justify-content-between align-items-start">
-                    <div className="min-w-0 pe-2">
-                      <div className="small fw-semibold text-truncate-2">{item.productName}</div>
-                      <div className="text-muted" style={{ fontSize: '0.72rem' }}>{formatMoney(item.unitPrice)} × {item.quantity} = {formatMoney(item.quantity * item.unitPrice)}</div>
+              ) : cart.map((item) => {
+                const lineRevenue = item.quantity * item.unitPrice - item.discount
+                const lineCost = item.quantity * item.costPrice
+                const lineProfit = lineRevenue - lineCost
+                return (
+                  <div key={item.product} className="cart-line py-2 border-bottom">
+                    <div className="d-flex justify-content-between align-items-start">
+                      <div className="min-w-0 pe-2">
+                        <div className="small fw-semibold text-truncate-2">{item.productName}</div>
+                        <div className="text-muted" style={{ fontSize: '0.72rem' }}>{item.sku} · {item.unit}</div>
+                      </div>
+                      <button className="btn btn-sm btn-link text-danger p-0" onClick={() => setCart(cart.filter((i) => i.product !== item.product))}>
+                        <i className="bi bi-x-lg small" />
+                      </button>
                     </div>
-                    <button className="btn btn-sm btn-link text-danger p-0" onClick={() => setCart(cart.filter((i) => i.product !== item.product))}>
-                      <i className="bi bi-x-lg small" />
-                    </button>
+
+                    <div className="d-flex align-items-center gap-2 mt-1">
+                      <Button size="sm" variant="light" className="border py-0 px-2" onClick={() => updateQty(item.product, item.quantity - 1)}>−</Button>
+                      <Form.Control size="sm" type="number" min="1" max={item.available} value={item.quantity} onChange={(e) => updateQty(item.product, e.target.value)} style={{ width: 64 }} />
+                      <Button size="sm" variant="light" className="border py-0 px-2" onClick={() => updateQty(item.product, item.quantity + 1)} disabled={item.quantity >= item.available}>+</Button>
+                      <small className="text-muted ms-1" style={{ fontSize: '0.72rem' }}>{item.available} in stock</small>
+                    </div>
+
+                    <div className="d-flex align-items-center gap-2 mt-1">
+                      <div className="flex-grow-1">
+                        <Form.Label className="mb-0 d-block" style={{ fontSize: '0.68rem' }}>Selling price</Form.Label>
+                        <InputGroup size="sm">
+                          <InputGroup.Text style={{ fontSize: '0.72rem' }}>RWF</InputGroup.Text>
+                          <Form.Control size="sm" type="number" min="0" step="0.01" value={item.unitPrice} onChange={(e) => updateUnitPrice(item.product, e.target.value)} />
+                        </InputGroup>
+                      </div>
+                      <div className="flex-grow-1">
+                        <OverlayTrigger placement="top" overlay={(props) => (
+                          <Tooltip {...props}>Cost at purchase time. Editing it only affects THIS sale's profit & stock valuation.</Tooltip>
+                        )}>
+                          <Form.Label className="mb-0 d-block" style={{ fontSize: '0.68rem' }}>Cost price</Form.Label>
+                        </OverlayTrigger>
+                        <InputGroup size="sm">
+                          <InputGroup.Text style={{ fontSize: '0.72rem' }}>RWF</InputGroup.Text>
+                          <Form.Control size="sm" type="number" min="0" step="0.01" value={item.costPrice} onChange={(e) => updateCostPrice(item.product, e.target.value)} />
+                        </InputGroup>
+                      </div>
+                    </div>
+
+                    <div className="d-flex justify-content-between align-items-center mt-1 small">
+                      <span className="text-muted" style={{ fontSize: '0.75rem' }}>Cost {formatMoney(lineCost)} · Revenue {formatMoney(lineRevenue)}</span>
+                      <Badge bg="" className={lineProfit >= 0 ? 'badge-soft-success' : 'badge-soft-danger'}>
+                        {lineProfit >= 0 ? '+' : ''}{formatMoney(lineProfit)} profit
+                      </Badge>
+                    </div>
                   </div>
-                  <div className="d-flex align-items-center gap-2 mt-1">
-                    <Button size="sm" variant="light" className="border py-0 px-2" onClick={() => updateQty(item.product, item.quantity - 1)}>−</Button>
-                    <Form.Control size="sm" type="number" min="1" max={item.available} value={item.quantity} onChange={(e) => updateQty(item.product, e.target.value)} style={{ width: 70 }} />
-                    <Button size="sm" variant="light" className="border py-0 px-2" onClick={() => updateQty(item.product, item.quantity + 1)} disabled={item.quantity >= item.available}>+</Button>
-                    <small className="text-muted ms-auto">{item.available} in stock</small>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </Card.Body>
 
             <Card.Footer className="bg-white">
               <div className="d-flex justify-content-between small mb-1">
                 <span className="text-muted">Subtotal</span><strong>{formatMoney(subtotal)}</strong>
+              </div>
+              <div className="d-flex justify-content-between small mb-1">
+                <span className="text-muted">Total cost</span><strong>{formatMoney(totalCost)}</strong>
+              </div>
+              <div className="d-flex justify-content-between small mb-1">
+                <span className="text-muted">Est. profit</span>
+                <strong className={estimatedProfit >= 0 ? 'text-success' : 'text-danger'}>{estimatedProfit >= 0 ? '+' : ''}{formatMoney(estimatedProfit)}</strong>
               </div>
               <div className="d-flex justify-content-between align-items-center small mb-2">
                 <span className="text-muted">Discount (RWF)</span>
@@ -287,8 +368,8 @@ export default function NewSale() {
               <Form.Group className="mb-2">
                 <Form.Label className="small fw-semibold">3. Payment Method *</Form.Label>
                 <div className="d-flex gap-2 flex-wrap">
-                  {[['CASH', 'bi-cash', 'Cash'], ['MOMO', 'bi-phone', 'MoMo'], ['BANK', 'bi-bank', 'Bank'], ['LOAN', 'bi-credit-card', 'Loan']].map(([val, icon, label]) => (
-                    <Button key={val} size="sm" variant={paymentMethod === val ? 'primary' : 'outline-secondary'} onClick={() => { setPaymentMethod(val); setAmountPaidInput('') }}>
+                  {PAYMENT_METHODS.map(([val, icon, label]) => (
+                    <Button key={val} size="sm" variant={paymentMethod === val ? 'primary' : 'outline-secondary'} onClick={() => switchMethod(val)}>
                       <i className={`bi ${icon} me-1`} />{label}
                     </Button>
                   ))}
@@ -302,27 +383,46 @@ export default function NewSale() {
                 </Form.Group>
               )}
 
-              {paymentMethod === 'LOAN' && (
-                <>
-                  <Row className="g-2 mb-2">
-                    <Col sm={6}>
-                      <Form.Group>
-                        <Form.Label className="small">Down Payment (RWF)</Form.Label>
-                        <Form.Control size="sm" type="number" min="0" max={total} value={amountPaidInput} onChange={(e) => setAmountPaidInput(e.target.value)} placeholder="0" />
-                      </Form.Group>
-                    </Col>
-                    <Col sm={6}>
-                      <Form.Group>
-                        <Form.Label className="small">Due Date</Form.Label>
-                        <Form.Control size="sm" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-                      </Form.Group>
-                    </Col>
-                  </Row>
-                  <Alert variant="warning" className="py-2 small mb-2">
-                    <i className="bi bi-exclamation-triangle me-1" />
-                    Credit sale: a loan record will be created for the unpaid balance of <strong>{formatMoney(balance)}</strong>.
-                  </Alert>
-                </>
+              <Form.Group className="mb-2">
+                <div className="d-flex justify-content-between align-items-center">
+                  <Form.Label className="small fw-semibold mb-0">Amount Paid (RWF)</Form.Label>
+                  <Form.Check
+                    type="switch"
+                    id="pay-full-switch"
+                    label={isCreditType ? 'No down payment' : 'Pay in full'}
+                    checked={payFull}
+                    onChange={(e) => setPayFull(e.target.checked)}
+                    className="small"
+                  />
+                </div>
+                {!payFull && (
+                  <InputGroup size="sm" className="mt-1">
+                    <InputGroup.Text>RWF</InputGroup.Text>
+                    <Form.Control size="sm" type="number" min="0" max={maxPaid} value={amountPaidInput} onChange={(e) => setAmountPaidInput(e.target.value)} placeholder="0" />
+                  </InputGroup>
+                )}
+                <Form.Text className="text-muted d-block small">
+                  {balance > 0
+                    ? `Paying ${formatMoney(amountPaid)} now leaves a credit balance of ${formatMoney(balance)} - a loan record will be created.`
+                    : 'Fully paid - no credit will be created.'}
+                </Form.Text>
+              </Form.Group>
+
+              {balance > 0 && (
+                <Row className="g-2 mb-2">
+                  <Col sm={6}>
+                    <Form.Group>
+                      <Form.Label className="small">Due Date</Form.Label>
+                      <Form.Control size="sm" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+                    </Form.Group>
+                  </Col>
+                  <Col sm={6}>
+                    <Form.Group>
+                      <Form.Label className="small">Reference (optional)</Form.Label>
+                      <Form.Control size="sm" value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder="Receipt / note" />
+                    </Form.Group>
+                  </Col>
+                </Row>
               )}
 
               <Form.Group className="mb-3">
@@ -345,15 +445,17 @@ export default function NewSale() {
             <tbody>
               <tr><td className="text-muted">Customer</td><td className="text-end fw-semibold">{customer ? `${customer.name} (${customer.phone})` : `${newCustomer.name || '-'} (${newCustomer.phone || '-'})`}</td></tr>
               <tr><td className="text-muted">Items</td><td className="text-end">{cart.reduce((s, i) => s + i.quantity, 0)} unit(s), {cart.length} product(s)</td></tr>
+              <tr><td className="text-muted">Total cost</td><td className="text-end">{formatMoney(totalCost)}</td></tr>
+              <tr><td className="text-muted">Est. profit</td><td className="text-end fw-semibold text-success">+{formatMoney(estimatedProfit)}</td></tr>
               <tr><td className="text-muted">Total</td><td className="text-end fw-bold">{formatMoney(total)}</td></tr>
               <tr><td className="text-muted">Payment Method</td><td className="text-end">{paymentMethod}</td></tr>
-              <tr><td className="text-muted">Amount Paid</td><td className="text-end">{formatMoney(paidAmount)}</td></tr>
+              <tr><td className="text-muted">Amount Paid</td><td className="text-end">{formatMoney(amountPaid)}</td></tr>
               {balance > 0 && (
                 <tr className="table-warning"><td className="text-muted">Credit Balance</td><td className="text-end fw-bold text-danger">{formatMoney(balance)}</td></tr>
               )}
             </tbody>
           </table>
-          <p className="small text-muted mb-0">Stock will be reduced immediately and all movements recorded.</p>
+          <p className="small text-muted mb-0">Stock will be reduced immediately and all movements recorded. Cost & profit reflect the prices above.</p>
         </Modal.Body>
         <Modal.Footer>
           <Button variant="light" onClick={() => setConfirming(false)} disabled={saving}>Cancel</Button>

@@ -14,6 +14,7 @@ exports.list = wrapAsync(async (req, res) => {
   }
   if (req.query.customer) filter.customer = req.query.customer;
   if (req.query.cashier) filter.cashier = req.query.cashier;
+  if (req.query.saleType && req.query.saleType !== 'ALL') filter.saleType = req.query.saleType;
   if (req.query.paymentMethod && req.query.paymentMethod !== 'ALL') filter.paymentMethod = req.query.paymentMethod;
   if (req.query.paymentStatus && req.query.paymentStatus !== 'ALL') filter.paymentStatus = req.query.paymentStatus;
   if (req.query.status) filter.status = req.query.status;
@@ -25,6 +26,7 @@ exports.list = wrapAsync(async (req, res) => {
 
   const [sales, total] = await Promise.all([
     Sale.find(filter).populate('customer', 'name phone').populate('cashier', 'fullName')
+      .populate('order', 'orderNumber')
       .sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
     Sale.countDocuments(filter)
   ]);
@@ -35,7 +37,9 @@ exports.list = wrapAsync(async (req, res) => {
 exports.getOne = wrapAsync(async (req, res) => {
   const sale = await Sale.findById(req.params.id)
     .populate('customer', 'name phone email address')
-    .populate('cashier', 'fullName username');
+    .populate('cashier', 'fullName username')
+    .populate('order', 'orderNumber')
+    .populate('onDemand', 'transactionNumber');
   if (!sale) throw new ApiError(404, 'Sale not found.');
   const settings = await Setting.getSettings();
   res.json({ success: true, data: { sale, company: settings } });

@@ -1,5 +1,7 @@
 const Customer = require('../models/Customer');
 const Sale = require('../models/Sale');
+const Order = require('../models/Order');
+const OnDemand = require('../models/OnDemand');
 const Payment = require('../models/Payment');
 const Loan = require('../models/Loan');
 const ApiError = require('../utils/ApiError');
@@ -27,12 +29,14 @@ exports.list = wrapAsync(async (req, res) => {
 exports.getOne = wrapAsync(async (req, res) => {
   const customer = await Customer.findById(req.params.id);
   if (!customer) throw new ApiError(404, 'Customer not found.');
-  const [sales, payments, loans] = await Promise.all([
+  const [sales, orders, onDemand, payments, loans] = await Promise.all([
     Sale.find({ customer: customer._id }).sort({ createdAt: -1 }).limit(50),
+    Order.find({ customer: customer._id }).sort({ createdAt: -1 }).limit(50),
+    OnDemand.find({ customer: customer._id }).sort({ createdAt: -1 }).limit(50),
     Payment.find({ customer: customer._id }).sort({ createdAt: -1 }).limit(50).populate('receivedBy', 'fullName'),
     Loan.find({ customer: customer._id }).sort({ createdAt: -1 }).limit(50)
   ]);
-  res.json({ success: true, data: { customer, sales, payments, loans } });
+  res.json({ success: true, data: { customer, sales, orders, onDemand, payments, loans } });
 });
 
 exports.create = wrapAsync(async (req, res) => {

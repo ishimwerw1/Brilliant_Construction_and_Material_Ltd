@@ -53,6 +53,29 @@ export default function FinancialReport() {
         <Col md={4}><StatCard icon="bi-cash-coin" label="Credit Outstanding" value={formatMoney(data.loans.creditOutstanding)} color="danger" /></Col>
       </Row>
 
+      <Card body className="mb-4">
+        <Card.Title className="fs-6 fw-semibold"><i className="bi bi-diagram-3 me-2 text-primary" />Sales by Type (actual costs &amp; profits)</Card.Title>
+        <div className="table-responsive">
+          <Table size="sm" hover className="mb-0">
+            <thead><tr><th>Type</th><th>Sales</th><th>Revenue</th><th>Cost</th><th>Profit</th><th>Received</th><th>Outstanding</th></tr></thead>
+            <tbody>
+              {(data.bySaleType || []).length === 0 && <tr><td colSpan={7} className="text-center text-muted py-3">No sales in this period</td></tr>}
+              {(data.bySaleType || []).map((row) => (
+                <tr key={row._id}>
+                  <td><StatusBadge value={row._id} /></td>
+                  <td>{row.count}</td>
+                  <td>{formatMoney(row.revenue)}</td>
+                  <td className="text-muted">{formatMoney(row.cost)}</td>
+                  <td className={`fw-semibold ${row.profit >= 0 ? 'text-success' : 'text-danger'}`}>{row.profit >= 0 ? '+' : ''}{formatMoney(row.profit)}</td>
+                  <td>{formatMoney(row.received)}</td>
+                  <td className={row.outstanding > 0 ? 'text-danger' : ''}>{formatMoney(row.outstanding)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </div>
+      </Card>
+
       <Row className="g-3">
         <Col lg={6}>
           <Card body>
@@ -77,7 +100,7 @@ export default function FinancialReport() {
             <h6 className="fw-semibold"><i className="bi bi-info-circle me-2 text-primary" />Accounting Notes</h6>
             <ul className="small text-muted ps-3 mb-0">
               <li className="mb-2"><strong>Revenue</strong> — money generated from sales.</li>
-              <li className="mb-2"><strong>Cost of Goods Sold</strong> — estimated using each product's buying price.</li>
+              <li className="mb-2"><strong>Cost of Goods Sold</strong> — uses the actual cost snapshotted at each sale (falls back to the product's buying price for older sales).</li>
               <li className="mb-2"><strong>Gross Profit</strong> = Sales Revenue − COGS.</li>
               <li className="mb-2"><strong>Operating Expenses</strong> — transport, rent, food, electricity, salaries, etc.</li>
               <li className="mb-2"><strong>Net Profit</strong> = Gross Profit − Operating Expenses.</li>

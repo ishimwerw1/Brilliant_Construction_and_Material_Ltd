@@ -6,8 +6,12 @@ const loanSchema = new mongoose.Schema(
     customer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', required: true },
     customerName: { type: String },
     customerPhone: { type: String },
-    sale: { type: mongoose.Schema.Types.ObjectId, ref: 'Sale', required: true },
+    sale: { type: mongoose.Schema.Types.ObjectId, ref: 'Sale' },
+    order: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' },
+    onDemand: { type: mongoose.Schema.Types.ObjectId, ref: 'OnDemand' },
     saleNumber: { type: String },
+    orderNumber: { type: String },
+    onDemandNumber: { type: String },
     items: [
       {
         productName: { type: String, required: true },

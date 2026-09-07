@@ -20,7 +20,7 @@ exports.list = wrapAsync(async (req, res) => {
   const filter = {};
   if (req.query.search?.trim()) {
     const s = new RegExp(req.query.search.trim(), 'i');
-    filter.$or = [{ customerName: s }, { customerPhone: s }, { loanNumber: s }, { saleNumber: s }];
+    filter.$or = [{ customerName: s }, { customerPhone: s }, { loanNumber: s }, { saleNumber: s }, { orderNumber: s }, { onDemandNumber: s }];
   }
   if (req.query.status && req.query.status !== 'ALL') filter.status = req.query.status;
   if (req.query.customer) filter.customer = req.query.customer;
@@ -69,7 +69,11 @@ exports.list = wrapAsync(async (req, res) => {
 });
 
 exports.getOne = wrapAsync(async (req, res) => {
-  const loan = await Loan.findById(req.params.id).populate('sale').populate('customer', 'name phone email address');
+  const loan = await Loan.findById(req.params.id)
+    .populate('sale')
+    .populate('order')
+    .populate('onDemand')
+    .populate('customer', 'name phone email address');
   if (!loan) throw new ApiError(404, 'Loan not found.');
   const Payment = require('../models/Payment');
   const payments = await Payment.find({ loan: loan._id }).sort({ createdAt: -1 }).populate('receivedBy', 'fullName');

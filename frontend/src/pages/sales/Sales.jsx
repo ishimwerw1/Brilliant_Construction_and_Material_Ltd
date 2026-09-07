@@ -16,6 +16,7 @@ export default function Sales() {
   const [search, setSearch] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('ALL')
   const [paymentStatus, setPaymentStatus] = useState('ALL')
+  const [saleType, setSaleType] = useState('ALL')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const { hasPermission } = useAuth()
@@ -27,6 +28,7 @@ export default function Sales() {
       if (search) params.search = search
       if (paymentMethod !== 'ALL') params.paymentMethod = paymentMethod
       if (paymentStatus !== 'ALL') params.paymentStatus = paymentStatus
+      if (saleType !== 'ALL') params.saleType = saleType
       if (from) params.from = from
       if (to) params.to = to
       const { data } = await api.get('/sales', { params })
@@ -38,7 +40,7 @@ export default function Sales() {
     } finally {
       setLoading(false)
     }
-  }, [page, search, paymentMethod, paymentStatus, from, to])
+  }, [page, search, paymentMethod, paymentStatus, saleType, from, to])
 
   useEffect(() => { load() }, [load])
 
@@ -48,9 +50,12 @@ export default function Sales() {
       { key: (r) => new Date(r.createdAt).toLocaleString(), label: 'Date' },
       { key: (r) => r.customer?.name || r.customerName, label: 'Customer' },
       { key: (r) => r.customer?.phone || '', label: 'Phone' },
+      { key: (r) => r.saleType || 'NORMAL', label: 'Type' },
       { key: (r) => r.subtotal, label: 'Subtotal' },
       { key: (r) => r.discount, label: 'Discount' },
       { key: (r) => r.total, label: 'Total' },
+      { key: (r) => r.totalCost, label: 'Total Cost' },
+      { key: (r) => r.totalProfit, label: 'Profit' },
       { key: (r) => r.amountPaid, label: 'Paid' },
       { key: (r) => r.balance, label: 'Balance' },
       { key: 'paymentMethod', label: 'Method' },
@@ -77,7 +82,10 @@ export default function Sales() {
         <div className="d-flex flex-wrap gap-2 mb-3">
           <Form.Control size="sm" placeholder="Search invoice # or customer..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} style={{ maxWidth: 230 }} />
           <Form.Select size="sm" value={paymentMethod} onChange={(e) => { setPaymentMethod(e.target.value); setPage(1) }} style={{ maxWidth: 150 }}>
-            {['ALL', 'CASH', 'MOMO', 'BANK', 'LOAN', 'MIXED'].map((m) => <option key={m} value={m}>{m === 'ALL' ? 'All Methods' : m}</option>)}
+            {['ALL', 'CASH', 'MOMO', 'BANK', 'LOAN', 'CREDIT', 'MIXED'].map((m) => <option key={m} value={m}>{m === 'ALL' ? 'All Methods' : m}</option>)}
+          </Form.Select>
+          <Form.Select size="sm" value={saleType} onChange={(e) => { setSaleType(e.target.value); setPage(1) }} style={{ maxWidth: 150 }}>
+            {['ALL', 'NORMAL', 'ORDER', 'ON_DEMAND'].map((s) => <option key={s} value={s}>{s === 'ALL' ? 'All Types' : s.replace(/_/g, ' ')}</option>)}
           </Form.Select>
           <Form.Select size="sm" value={paymentStatus} onChange={(e) => { setPaymentStatus(e.target.value); setPage(1) }} style={{ maxWidth: 160 }}>
             {['ALL', 'PAID', 'PARTIALLY_PAID', 'UNPAID'].map((s) => <option key={s} value={s}>{s === 'ALL' ? 'All Statuses' : s.replace(/_/g, ' ')}</option>)}
@@ -95,7 +103,13 @@ export default function Sales() {
             { key: 'customer', label: 'Customer', render: (s) => (
               <span className="small">{s.customer?.name}<br /><small className="text-muted">{s.customer?.phone}</small></span>
             )},
+            { key: 'saleType', label: 'Type', render: (s) => (s.saleType && s.saleType !== 'NORMAL' ? <StatusBadge value={s.saleType} /> : <span className="text-muted small">—</span>) },
             { key: 'total', label: 'Total', render: (s) => `${Number(s.total).toLocaleString()} RWF` },
+            { key: 'profit', label: 'Profit', render: (s) => (
+              <span className={`small ${(s.totalProfit ?? 0) >= 0 ? 'text-success' : 'text-danger'}`}>
+                {(s.totalProfit ?? 0) >= 0 ? '+' : ''}{Number(s.totalProfit ?? 0).toLocaleString()}
+              </span>
+            )},
             { key: 'amountPaid', label: 'Paid', render: (s) => `${Number(s.amountPaid).toLocaleString()}` },
             { key: 'balance', label: 'Balance', render: (s) => (
               <span className={s.balance > 0 ? 'text-danger fw-semibold' : 'text-muted'}>{Number(s.balance).toLocaleString()}</span>

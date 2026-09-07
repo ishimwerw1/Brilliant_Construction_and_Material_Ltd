@@ -22,7 +22,10 @@ exports.list = wrapAsync(async (req, res) => {
 
   const [payments, total] = await Promise.all([
     Payment.find(filter).populate('customer', 'name phone').populate('receivedBy', 'fullName')
-      .populate('loan', 'loanNumber').sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
+      .populate('loan', 'loanNumber')
+      .populate('order', 'orderNumber')
+      .populate('onDemand', 'transactionNumber')
+      .sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
     Payment.countDocuments(filter)
   ]);
 

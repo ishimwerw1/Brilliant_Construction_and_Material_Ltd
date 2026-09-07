@@ -18,6 +18,7 @@ import NewSale from './pages/sales/NewSale'
 import Sales from './pages/sales/Sales'
 import SaleDetail from './pages/sales/SaleDetail'
 import Orders from './pages/orders/Orders'
+import OnDemandSale from './pages/onDemand/OnDemandSale'
 
 import Customers from './pages/customers/Customers'
 import CustomerDetail from './pages/customers/CustomerDetail'
@@ -37,6 +38,7 @@ import ReportsLoans from './pages/reports/LoansReport'
 import ReportsFinancial from './pages/reports/FinancialReport'
 import ReportsExpenses from './pages/reports/ExpenseReport'
 import ReportsPurchases from './pages/reports/PurchaseReport'
+import ReportsOnDemand from './pages/reports/OnDemandReport'
 import ReportsUserPerformance from './pages/reports/UserPerformanceReport'
 import ReportsProfitLoss from './pages/reports/ProfitLossReport'
 
@@ -76,6 +78,7 @@ export default function App() {
               <Route path="/sales" element={<Protected permission="sales.read"><Sales /></Protected>} />
               <Route path="/sales/:id" element={<Protected permission="sales.read"><SaleDetail /></Protected>} />
               <Route path="/orders" element={<Protected permission="orders.read"><Orders /></Protected>} />
+              <Route path="/on-demand" element={<Protected permission="onDemand.read"><OnDemandSale /></Protected>} />
 
               <Route path="/customers" element={<Protected permission="customers.read"><Customers /></Protected>} />
               <Route path="/customers/:id" element={<Protected permission="customers.read"><CustomerDetail /></Protected>} />
@@ -95,6 +98,7 @@ export default function App() {
               <Route path="/reports/financial" element={<Protected permission="reports.read"><ReportsFinancial /></Protected>} />
               <Route path="/reports/expenses" element={<Protected permission="reports.read"><ReportsExpenses /></Protected>} />
               <Route path="/reports/purchases" element={<Protected permission="reports.read"><ReportsPurchases /></Protected>} />
+              <Route path="/reports/on-demand" element={<Protected permission="reports.read"><ReportsOnDemand /></Protected>} />
               <Route path="/reports/user-performance" element={<Protected permission="reports.read"><ReportsUserPerformance /></Protected>} />
               <Route path="/reports/profit-loss" element={<Protected permission="reports.read"><ReportsProfitLoss /></Protected>} />
 

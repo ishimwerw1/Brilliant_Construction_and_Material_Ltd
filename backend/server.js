@@ -68,6 +68,9 @@ app.use('/api/sales', require('./routes/saleRoutes'));
 app.use('/orders', require('./routes/orderRoutes'));
 app.use('/api/orders', require('./routes/orderRoutes'));
 
+app.use('/on-demand', require('./routes/onDemandRoutes'));
+app.use('/api/on-demand', require('./routes/onDemandRoutes'));
+
 app.use('/payments', require('./routes/paymentRoutes'));
 app.use('/api/payments', require('./routes/paymentRoutes'));
 

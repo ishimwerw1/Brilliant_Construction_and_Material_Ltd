@@ -296,5 +296,8 @@
     "deleteConfirmTitle": "Delete Backup?",
     "deleteWarning": "Are you sure you want to delete backup"
   },
-  "backups": "Backups"
+  "backups": "Backups",
+  "confirmed": "Confirmed",
+  "onDemand": "On-Demand",
+  "onDemandSale": "On-Demand Sale"
 }

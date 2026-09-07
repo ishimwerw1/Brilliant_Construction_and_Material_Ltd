@@ -31,7 +31,14 @@ const PERMISSIONS = [
 
   'orders.create',
   'orders.read',
+  'orders.update',
   'orders.cancel',
+  'orders.pay',
+
+  'onDemand.create',
+  'onDemand.read',
+  'onDemand.cancel',
+  'onDemand.pay',
 
   'payments.create',
   'payments.read',

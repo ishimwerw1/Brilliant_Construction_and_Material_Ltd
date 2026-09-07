@@ -8,7 +8,12 @@ const saleItemSchema = new mongoose.Schema(
     quantity: { type: Number, required: true, min: 1 },
     unitPrice: { type: Number, required: true, min: 0 },
     discount: { type: Number, default: 0, min: 0 },
-    subtotal: { type: Number, required: true }
+    subtotal: { type: Number, required: true },
+    costPriceAtSale: { type: Number, default: 0, min: 0 },
+    sellingPriceAtSale: { type: Number, default: 0, min: 0 },
+    totalCost: { type: Number, default: 0, min: 0 },
+    totalRevenue: { type: Number, default: 0, min: 0 },
+    profit: { type: Number, default: 0 }
   },
   { _id: false }
 );
@@ -25,14 +30,18 @@ const saleSchema = new mongoose.Schema(
     subtotal: { type: Number, required: true, min: 0 },
     discount: { type: Number, default: 0, min: 0 },
     total: { type: Number, required: true, min: 0 },
+    totalCost: { type: Number, default: 0, min: 0 },
+    totalProfit: { type: Number, default: 0 },
     amountPaid: { type: Number, default: 0, min: 0 },
     balance: { type: Number, default: 0, min: 0 },
-    paymentMethod: { type: String, enum: ['CASH', 'MOMO', 'BANK', 'LOAN', 'MIXED'], required: true },
+    paymentMethod: { type: String, enum: ['CASH', 'MOMO', 'BANK', 'LOAN', 'CREDIT', 'MIXED'], required: true },
     paymentStatus: { type: String, enum: ['PAID', 'PARTIALLY_PAID', 'UNPAID'], default: 'UNPAID' },
+    saleType: { type: String, enum: ['NORMAL', 'ORDER', 'ON_DEMAND'], default: 'NORMAL' },
     paymentReference: { type: String, trim: true },
     status: { type: String, enum: ['COMPLETED', 'CANCELLED'], default: 'COMPLETED' },
     cashier: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     order: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' },
+    onDemand: { type: mongoose.Schema.Types.ObjectId, ref: 'OnDemand' },
     notes: { type: String, trim: true },
     cancelledReason: { type: String }
   },

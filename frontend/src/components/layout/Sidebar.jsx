@@ -48,6 +48,7 @@ export default function Sidebar({ open, onClose }) {
             {hasPermission('sales.create') && <Item to="/sales/new" icon="bi-cart-plus" labelKey="newSale" />}
             {hasPermission('sales.read') && <Item to="/sales" icon="bi-receipt" labelKey="sales" />}
             {hasPermission('orders.read') && <Item to="/orders" icon="bi-clipboard-check" labelKey="orders" />}
+            {hasPermission('onDemand.read') && <Item to="/on-demand" icon="bi-shuffle" labelKey="onDemand" />}
           </>
         )}
 
@@ -93,6 +94,7 @@ export default function Sidebar({ open, onClose }) {
             <Item to="/reports/profit-loss" icon="bi-bar-chart-line" labelKey="profitLoss" />
             <Item to="/reports/expenses" icon="bi-receipt-cutoff" labelKey="expenseReports" />
             <Item to="/reports/purchases" icon="bi-cart4" labelKey="purchaseReports" />
+            <Item to="/reports/on-demand" icon="bi-shuffle" labelKey="onDemand" />
             <Item to="/reports/user-performance" icon="bi-person-check" labelKey="userPerformanceReport" />
           </>
         )}
