@@ -173,7 +173,8 @@ export default function OnDemandSale() {
         ))}
       </Row>
 
-      {error && <Alert variant="danger" dismissible onClose={() => setError('')} className="py-2 small">{error}</Alert>}
+{error && <Alert variant="danger" dismissible onClose={() => setError('')} className="py-2 small">{error}</Alert>}
+      {toast && <Alert variant={toast.type} dismissible onClose={() => setToast(null)} className="py-2 small">{toast.msg}</Alert>}
 
       <Card body className="p-0">
         <div className="table-responsive">
@@ -500,7 +501,6 @@ function NewOnDemandModal({ show, onHide, saving, setSaving, onCreated }) {
       </Modal.Header>
       <Modal.Body>
 {error && <Alert variant="danger" dismissible onClose={() => setError('')} className="py-2 small">{error}</Alert>}
-      {toast && <Alert variant={toast.type} dismissible onClose={() => setToast(null)} className="py-2 small">{toast.msg}</Alert>}
         <div className="small text-muted mb-3">
           <i className="bi bi-info-circle me-1" />
           On-demand = products bought from a <strong>supplier</strong> directly for this <strong>customer</strong> (no stock movement).
