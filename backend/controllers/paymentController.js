@@ -44,9 +44,6 @@ exports.repayLoan = wrapAsync(async (req, res) => {
   if (!loanId) throw new ApiError(400, 'Loan is required.');
   const allowed = ['CASH', 'MOMO', 'BANK'];
   if (!allowed.includes(method)) throw new ApiError(400, 'Repayment method must be CASH, MOMO or BANK.');
-  if ((method === 'MOMO' || method === 'BANK') && !reference) {
-    throw new ApiError(400, `A transaction/reference number is required for ${method} payments.`);
-  }
 
   const { loan, payment } = await repayLoan({ loanId, amount, method, reference, notes, user: req.user });
   res.status(201).json({

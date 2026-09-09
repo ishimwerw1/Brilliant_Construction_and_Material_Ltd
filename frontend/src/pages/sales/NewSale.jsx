@@ -392,7 +392,7 @@ export default function NewSale() {
 
               {(paymentMethod === 'MOMO' || paymentMethod === 'BANK') && (
                 <Form.Group className="mb-2">
-                  <Form.Label className="small">{paymentMethod === 'MOMO' ? 'MoMo Transaction ID *' : 'Bank Slip / Reference *'}</Form.Label>
+                  <Form.Label className="small">{paymentMethod === 'MOMO' ? 'MoMo Transaction ID (optional)' : 'Bank Slip / Reference (optional)'}</Form.Label>
                   <Form.Control size="sm" value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder={paymentMethod === 'MOMO' ? 'e.g. 1234567.ABCD' : 'e.g. BK-889123'} />
                 </Form.Group>
               )}

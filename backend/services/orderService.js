@@ -185,9 +185,6 @@ const payOrder = async ({ orderId, amount, method, reference, notes, user }) => 
         throw new ApiError(400, `Payment exceeds the outstanding balance of ${order.balance.toLocaleString()} RWF.`);
       }
       if (!['CASH', 'MOMO', 'BANK'].includes(method)) throw new ApiError(400, 'Payment method must be CASH, MOMO or BANK.');
-      if ((method === 'MOMO' || method === 'BANK') && !reference) {
-        throw new ApiError(400, `A transaction/reference number is required for ${method} payments.`);
-      }
 
       const previousOverdue = order.balance;
       order.amountPaid += payAmount;

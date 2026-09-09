@@ -315,7 +315,7 @@ export default function OnDemandSale() {
           </Form.Group>
           {(payMethod === 'MOMO' || payMethod === 'BANK') && (
             <Form.Group className="mb-2">
-              <Form.Label className="small">Transaction Reference *</Form.Label>
+              <Form.Label className="small">Transaction Reference (optional)</Form.Label>
               <Form.Control value={payReference} onChange={(e) => setPayReference(e.target.value)} />
             </Form.Group>
           )}

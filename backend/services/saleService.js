@@ -81,9 +81,6 @@ const createSale = async ({ payload, user }) => {
       if (!allowedMethods.includes(paymentMethod)) {
         throw new ApiError(400, 'Payment method must be one of CASH, MOMO, BANK, LOAN, CREDIT.');
       }
-      if ((paymentMethod === 'MOMO' || paymentMethod === 'BANK') && !paymentReference) {
-        throw new ApiError(400, `A transaction/reference number is required for ${paymentMethod} payments.`);
-      }
 
       const customer = await resolveCustomer({
         customerId: payload.customer,
