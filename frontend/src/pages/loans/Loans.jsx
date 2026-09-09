@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Card, Row, Col, Form, Badge, ListGroup } from 'react-bootstrap'
+import { Card, Row, Col, Form, Badge, ListGroup, Button, Modal, Alert } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
-import api from '../../api/client'
+import api, { getError } from '../../api/client'
 import DataTable from '../../components/common/DataTable'
 import StatCard from '../../components/common/StatCard'
 import { formatMoney } from '../../context/LanguageContext'
+import { useAuth } from '../../context/AuthContext'
+
+const OPEN_STATUSES = ['ACTIVE', 'PARTIALLY_PAID', 'OVERDUE']
 
 export default function Loans() {
+  const { hasPermission } = useAuth()
   const [customers, setCustomers] = useState([])
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -17,6 +21,15 @@ export default function Loans() {
   const [status, setStatus] = useState('ALL')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  const [successMsg, setSuccessMsg] = useState('')
+
+  const [paying, setPaying] = useState(null)
+  const [payLoans, setPayLoans] = useState([])
+  const [payForm, setPayForm] = useState({ loanId: '', amount: '', method: 'CASH', reference: '', notes: '' })
+  const [savingPay, setSavingPay] = useState(false)
+  const [payError, setPayError] = useState('')
+
+  const canRepay = hasPermission('payments.create') || hasPermission('loans.update')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -42,11 +55,65 @@ export default function Loans() {
     <span className="small">{c.loanCount} loan{c.loanCount === 1 ? '' : 's'}</span>
   )
 
+  const startPay = async (c) => {
+    setPayError('')
+    try {
+      const { data } = await api.get(`/loans/customer/${String(c._id)}`)
+      const open = (data.data.loans || [])
+        .filter((l) => OPEN_STATUSES.includes(l.status))
+        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+      if (open.length === 0) return setPayError('This customer has no open loans to record a payment against.')
+      setPayLoans(open)
+      setPayForm({ loanId: open[0]._id, amount: String(open[0].outstandingBalance), method: 'CASH', reference: '', notes: '' })
+      setPaying(c)
+    } catch (err) {
+      setPayError(getError(err))
+    }
+  }
+
+  const selLoan = payLoans.find((l) => String(l._id) === String(payForm.loanId))
+  const amount = Number(payForm.amount || 0)
+  const remainingAfter = selLoan ? Math.max(0, Number(selLoan.outstandingBalance) - amount) : 0
+  const isFullyPaid = Boolean(selLoan && amount > 0 && remainingAfter <= 0.001)
+
+  const recordPayment = async () => {
+    if (!selLoan) return
+    if (!amount || amount <= 0) return setPayError('Enter a valid amount.')
+    if (amount > Number(selLoan.outstandingBalance)) {
+      return setPayError(`Amount cannot exceed the outstanding balance of ${formatMoney(selLoan.outstandingBalance)}.`)
+    }
+    setSavingPay(true)
+    setPayError('')
+    try {
+      const { data } = await api.post(`/loans/${payForm.loanId}/repay`, {
+        amount,
+        method: payForm.method,
+        reference: payForm.reference || undefined,
+        notes: payForm.notes || undefined
+      })
+      const remaining = Number(data.data.loan.outstandingBalance)
+      setSuccessMsg(
+        `Payment of ${formatMoney(amount)} recorded (${data.data.payment.paymentNumber}). ` +
+        (remaining > 0 ? `Remaining balance: ${formatMoney(remaining)}.` : 'This loan is now fully paid off.')
+      )
+      setPaying(null)
+      setPayLoans([])
+      setPayForm({ loanId: '', amount: '', method: 'CASH', reference: '', notes: '' })
+      load()
+    } catch (err) {
+      setPayError(getError(err))
+    } finally {
+      setSavingPay(false)
+    }
+  }
+
   return (
     <div>
       <h4 className="fw-bold mb-3" style={{ color: '#0d3b66' }}>
         <i className="bi bi-cash-coin me-2" />Loans / Credit Management <span className="text-muted fs-6">({total} customer{customers.length === 1 ? '' : 's'})</span>
       </h4>
+
+      {successMsg && <Alert variant="success" dismissible onClose={() => setSuccessMsg('')} className="py-2 small">{successMsg}</Alert>}
 
       {stats && (
         <Row className="g-3 mb-4">
@@ -82,9 +149,16 @@ export default function Loans() {
               <strong className={c.outstandingBalance > 0 ? 'text-danger' : 'text-success'}>{formatMoney(c.outstandingBalance)}</strong>
             )},
             { key: 'actions', label: 'Action', render: (c) => (
-              <Link to={`/loans/customer/${typeof c._id === 'object' ? c._id?.toString() : c._id}`} className="btn btn-sm btn-primary">
-                <i className="bi bi-eye me-1" />View
-              </Link>
+              <div className="d-flex gap-1">
+                <Link to={`/loans/customer/${typeof c._id === 'object' ? c._id?.toString() : c._id}`} className="btn btn-sm btn-primary">
+                  <i className="bi bi-eye me-1" />View
+                </Link>
+                {canRepay && Number(c.outstandingBalance) > 0 && (
+                  <Button size="sm" variant="outline-success" onClick={() => startPay(c)}>
+                    <i className="bi bi-cash-stack me-1" />Payment
+                  </Button>
+                )}
+              </div>
             )}
           ]}
           data={customers}
@@ -109,7 +183,8 @@ export default function Loans() {
                   </div>
                   <div className="d-flex gap-2 align-items-center">
                     <strong className="text-danger">{formatMoney(c.outstandingBalance)}</strong>
-                    <Link to={`/loans/customer/${String(c._id)}`} className="btn btn-sm btn-primary">View &amp; Repay</Link>
+                    {canRepay && <Button size="sm" variant="outline-success" onClick={() => startPay(c)}><i className="bi bi-cash-stack me-1" />Record Payment</Button>}
+                    <Link to={`/loans/customer/${String(c._id)}`} className="btn btn-sm btn-primary">View</Link>
                   </div>
                 </ListGroup.Item>
               ))}
@@ -117,6 +192,84 @@ export default function Loans() {
           </Card>
         </>
       )}
+
+      {/* Record payment */}
+      <Modal show={Boolean(paying)} onHide={() => !savingPay && setPaying(null)} centered backdrop="static">
+        <Form onSubmit={(e) => { e.preventDefault(); recordPayment() }}>
+          <Modal.Header closeButton={!savingPay}>
+            <Modal.Title className="fs-6 fw-bold">Record Payment — {paying?.customerName}</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            {payError && <Alert variant="danger" dismissible onClose={() => setPayError('')} className="py-2 small">{payError}</Alert>}
+
+            {payLoans.length > 1 && selLoan && (
+              <Form.Group className="mb-2">
+                <Form.Label className="small fw-semibold">Apply to Loan *</Form.Label>
+                <Form.Select
+                  value={payForm.loanId}
+                  onChange={(e) => {
+                    const l = payLoans.find((x) => String(x._id) === e.target.value)
+                    setPayForm((f) => ({ ...f, loanId: e.target.value, amount: l ? String(l.outstandingBalance) : f.amount }))
+                  }}
+                >
+                  {payLoans.map((l) => (
+                    <option key={String(l._id)} value={String(l._id)}>
+                      {l.loanNumber} — {formatMoney(l.outstandingBalance)} outstanding ({l.status.replace(/_/g, ' ')})
+                    </option>
+                  ))}
+                </Form.Select>
+              </Form.Group>
+            )}
+
+            {selLoan && (
+              <Alert variant="info" className="py-2 small">
+                {payLoans.length > 1 ? `Selected loan ${selLoan.loanNumber} — ` : `Loan ${selLoan.loanNumber} — `}
+                Outstanding balance: <strong>{formatMoney(selLoan.outstandingBalance)}</strong>
+              </Alert>
+            )}
+
+            <Form.Group className="mb-2">
+              <Form.Label className="small fw-semibold">Payment Amount (RWF) *</Form.Label>
+              <Form.Control type="number" min="1" max={selLoan?.outstandingBalance} value={payForm.amount} onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })} required autoFocus />
+            </Form.Group>
+
+            <Form.Group className="mb-2">
+              <Form.Label className="small fw-semibold">Method *</Form.Label>
+              <Form.Select value={payForm.method} onChange={(e) => setPayForm({ ...payForm, method: e.target.value })}>
+                <option value="CASH">Cash</option>
+                <option value="MOMO">MoMo</option>
+                <option value="BANK">Bank</option>
+              </Form.Select>
+            </Form.Group>
+
+            {(payForm.method === 'MOMO' || payForm.method === 'BANK') && (
+              <Form.Group className="mb-2">
+                <Form.Label className="small">Transaction Reference (optional)</Form.Label>
+                <Form.Control value={payForm.reference} onChange={(e) => setPayForm({ ...payForm, reference: e.target.value })} placeholder={payForm.method === 'MOMO' ? 'MoMo TXN ID' : 'Bank slip no.'} />
+              </Form.Group>
+            )}
+
+            <Form.Group className="mb-2">
+              <Form.Label className="small">Notes</Form.Label>
+              <Form.Control as="textarea" rows={2} value={payForm.notes} onChange={(e) => setPayForm({ ...payForm, notes: e.target.value })} />
+            </Form.Group>
+
+            {amount > 0 && selLoan && (
+              <Alert variant={isFullyPaid ? 'success' : 'warning'} className="py-2 small mb-0">
+                {isFullyPaid
+                  ? <><i className="bi bi-check-circle me-1" />This loan will be <strong>fully paid off</strong>.</>
+                  : <>After this payment the remaining balance will be <strong>{formatMoney(remainingAfter)}</strong> on this loan.</>}
+              </Alert>
+            )}
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="light" type="button" disabled={savingPay} onClick={() => setPaying(null)}>Cancel</Button>
+            <Button type="submit" variant="success" disabled={savingPay || !amount}>
+              {savingPay ? <><span className="spinner-border spinner-border-sm me-1" />Saving...</> : 'Confirm Payment'}
+            </Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
     </div>
   )
 }
