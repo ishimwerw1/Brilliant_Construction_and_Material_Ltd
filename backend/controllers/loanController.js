@@ -17,24 +17,47 @@ exports.list = wrapAsync(async (req, res) => {
 
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(100, Number(req.query.limit) || 20);
-  const filter = {};
+  const match = {};
+
   if (req.query.search?.trim()) {
     const s = new RegExp(req.query.search.trim(), 'i');
-    filter.$or = [{ customerName: s }, { customerPhone: s }, { loanNumber: s }, { saleNumber: s }, { orderNumber: s }, { onDemandNumber: s }];
+    match.$or = [{ customerName: s }, { customerPhone: s }];
   }
-  if (req.query.status && req.query.status !== 'ALL') filter.status = req.query.status;
-  if (req.query.customer) filter.customer = req.query.customer;
+  // Filter to customers who have at least one loan with the given status.
+  if (req.query.status && req.query.status !== 'ALL') match.status = req.query.status;
   if (req.query.from || req.query.to) {
-    filter.createdAt = {};
-    if (req.query.from) filter.createdAt.$gte = new Date(req.query.from);
-    if (req.query.to) filter.createdAt.$lte = new Date(`${req.query.to}T23:59:59.999Z`);
+    match.createdAt = {};
+    if (req.query.from) match.createdAt.$gte = new Date(req.query.from);
+    if (req.query.to) match.createdAt.$lte = new Date(`${req.query.to}T23:59:59.999Z`);
   }
 
-  const [loans, total] = await Promise.all([
-    Loan.find(filter).populate('customer', 'name phone').sort({ createdAt: -1 })
-      .skip((page - 1) * limit).limit(limit),
-    Loan.countDocuments(filter)
+  const groupStage = {
+    _id: '$customer',
+    customerName: { $first: '$customerName' },
+    customerPhone: { $first: '$customerPhone' },
+    loanCount: { $sum: 1 },
+    totalAmount: { $sum: '$totalAmount' },
+    amountPaid: { $sum: '$amountPaid' },
+    outstandingBalance: { $sum: '$outstandingBalance' },
+    latestCreatedAt: { $max: '$createdAt' }
+  };
+
+  // All loan transactions belonging to the same customer are grouped into a single summary row.
+  const customers = await Loan.aggregate([
+    { $match: match },
+    { $sort: { createdAt: -1 } },
+    { $group: groupStage },
+    { $sort: { latestCreatedAt: -1 } },
+    { $skip: (page - 1) * limit },
+    { $limit: limit }
   ]);
+
+  const [countResult] = await Loan.aggregate([
+    { $match: match },
+    { $group: groupStage },
+    { $group: { _id: null, total: { $sum: 1 } } }
+  ]);
+  const total = countResult?.total || 0;
 
   const [stats] = await Loan.aggregate([
     {
@@ -56,7 +79,7 @@ exports.list = wrapAsync(async (req, res) => {
   res.json({
     success: true,
     data: {
-      loans,
+      customers,
       total,
       page,
       pages: Math.ceil(total / limit),
@@ -65,6 +88,39 @@ exports.list = wrapAsync(async (req, res) => {
         totalCredit: 0, totalRepaid: 0, totalOutstanding: 0, overdueAmount: 0
       }
     }
+  });
+});
+
+/** GET /api/loans/customer/:customerId - full loan history grouped for one customer. */
+exports.getByCustomer = wrapAsync(async (req, res) => {
+  await flagOverdue();
+  const customerId = req.params.customerId;
+
+  const loans = await Loan.find({ customer: customerId })
+    .populate('customer', 'name phone email address')
+    .sort({ createdAt: -1 });
+  if (!loans || loans.length === 0) throw new ApiError(404, 'No loans found for this customer.');
+
+  const loanIds = loans.map((l) => l._id);
+  const Payment = require('../models/Payment');
+  const payments = await Payment.find({ loan: { $in: loanIds } })
+    .sort({ createdAt: -1 })
+    .populate('receivedBy', 'fullName');
+
+  const totals = loans.reduce(
+    (acc, l) => {
+      acc.totalAmount += l.totalAmount || 0;
+      acc.amountPaid += l.amountPaid || 0;
+      acc.outstandingBalance += l.outstandingBalance || 0;
+      return acc;
+    },
+    { totalAmount: 0, amountPaid: 0, outstandingBalance: 0 }
+  );
+  totals.loanCount = loans.length;
+
+  res.json({
+    success: true,
+    data: { customer: loans[0].customer, loans, payments, totals }
   });
 });
 

@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Card, Row, Col, Form, Button, Badge } from 'react-bootstrap'
+import { Card, Row, Col, Form, Badge, ListGroup } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import api from '../../api/client'
 import DataTable from '../../components/common/DataTable'
-import StatusBadge from '../../components/common/StatusBadge'
 import StatCard from '../../components/common/StatCard'
 import { formatMoney } from '../../context/LanguageContext'
 
 export default function Loans() {
-  const [loans, setLoans] = useState([])
+  const [customers, setCustomers] = useState([])
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
@@ -28,7 +27,7 @@ export default function Loans() {
       if (from) params.from = from
       if (to) params.to = to
       const { data } = await api.get('/loans', { params })
-      setLoans(data.data.loans)
+      setCustomers(data.data.customers || [])
       setStats(data.data.stats)
       setPages(data.data.pages)
       setTotal(data.data.total)
@@ -39,10 +38,14 @@ export default function Loans() {
 
   useEffect(() => { load() }, [load])
 
+  const loanStatusCell = (c) => (
+    <span className="small">{c.loanCount} loan{c.loanCount === 1 ? '' : 's'}</span>
+  )
+
   return (
     <div>
       <h4 className="fw-bold mb-3" style={{ color: '#0d3b66' }}>
-        <i className="bi bi-cash-coin me-2" />Loans / Credit Management <span className="text-muted fs-6">({total})</span>
+        <i className="bi bi-cash-coin me-2" />Loans / Credit Management <span className="text-muted fs-6">({total} customer{customers.length === 1 ? '' : 's'})</span>
       </h4>
 
       {stats && (
@@ -56,7 +59,7 @@ export default function Loans() {
 
       <Card body>
         <div className="d-flex flex-wrap gap-2 mb-3">
-          <Form.Control size="sm" placeholder="Search customer, phone, loan # or sale #..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} style={{ maxWidth: 280 }} />
+          <Form.Control size="sm" placeholder="Search customer name or phone..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} style={{ maxWidth: 280 }} />
           <Form.Select size="sm" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1) }} style={{ maxWidth: 170 }}>
             {['ALL', 'ACTIVE', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED'].map((s) => (
               <option key={s} value={s}>{s === 'ALL' ? 'All Statuses' : s.replace(/_/g, ' ')}</option>
@@ -68,34 +71,23 @@ export default function Loans() {
 
         <DataTable
           columns={[
-            { key: 'loanNumber', label: 'Loan ID', render: (l) => (
-              <Link to={`/loans/${l._id}`} className="fw-semibold text-decoration-none" style={{ color: '#0d3b66' }}>{l.loanNumber}</Link>
+            { key: 'customerName', label: 'Customer', render: (c) => (
+              <span className="small fw-semibold">{c.customerName || 'Unknown customer'}</span>
             )},
-            { key: 'customerName', label: 'Customer', render: (l) => (
-              <span className="small">{l.customerName}<br /><small className="text-muted">{l.customerPhone}</small></span>
+            { key: 'customerPhone', label: 'Phone', render: (c) => <code className="small">{c.customerPhone || '-'}</code> },
+            { key: 'loanCount', label: 'Total Loans', render: loanStatusCell },
+            { key: 'totalAmount', label: 'Total Debt', render: (c) => formatMoney(c.totalAmount) },
+            { key: 'amountPaid', label: 'Paid', render: (c) => <span className="text-success fw-semibold">{formatMoney(c.amountPaid)}</span> },
+            { key: 'outstandingBalance', label: 'Remaining', render: (c) => (
+              <strong className={c.outstandingBalance > 0 ? 'text-danger' : 'text-success'}>{formatMoney(c.outstandingBalance)}</strong>
             )},
-            { key: 'saleNumber', label: 'Sale', render: (l) => l.sale?.saleNumber ? (
-              <Link to={`/sales/${typeof l.sale === 'object' ? l.sale._id : ''}`} className="small text-decoration-none">{l.saleNumber}</Link>
-            ) : <code className="small">{l.saleNumber}</code> },
-            { key: 'items', label: 'Products', render: (l) => (
-              <span className="small text-muted">{l.items.map((i) => `${i.productName} ×${i.quantity}`).join(', ').slice(0, 60)}{l.items.length ? '...' : ''}</span>
-            )},
-            { key: 'totalAmount', label: 'Total', render: (l) => formatMoney(l.totalAmount) },
-            { key: 'amountPaid', label: 'Paid', render: (l) => <span className="text-success fw-semibold">{formatMoney(l.amountPaid)}</span> },
-            { key: 'outstandingBalance', label: 'Remaining', render: (l) => (
-              <strong className={l.outstandingBalance > 0 ? 'text-danger' : 'text-success'}>{formatMoney(l.outstandingBalance)}</strong>
-            )},
-            { key: 'dueDate', label: 'Due Date', render: (l) => {
-              if (!l.dueDate) return '-'
-              const overdue = new Date(l.dueDate) < new Date() && !['PAID', 'CANCELLED'].includes(l.status)
-              return <span className={`small ${overdue ? 'text-danger fw-bold' : ''}`}>{new Date(l.dueDate).toLocaleDateString()}</span>
-            }},
-            { key: 'status', label: 'Status', render: (l) => <StatusBadge value={l.status} /> },
-            { key: 'actions', label: '', render: (l) => (
-              <Link to={`/loans/${l._id}`} className="btn btn-sm btn-light border"><i className="bi bi-eye" /></Link>
+            { key: 'actions', label: 'Action', render: (c) => (
+              <Link to={`/loans/customer/${typeof c._id === 'object' ? c._id?.toString() : c._id}`} className="btn btn-sm btn-primary">
+                <i className="bi bi-eye me-1" />View
+              </Link>
             )}
           ]}
-          data={loans}
+          data={customers}
           loading={loading}
           page={page}
           pages={pages}
@@ -106,22 +98,22 @@ export default function Loans() {
 
       {stats && stats.overdueCount > 0 && status === 'ALL' && (
         <>
-          <h5 className="fw-bold mt-4 mb-2"><Badge bg="" className="badge-soft-danger">OVERDUE</Badge> Overdue Loans</h5>
+          <h5 className="fw-bold mt-4 mb-2"><Badge bg="" className="badge-soft-danger">OVERDUE</Badge> Customers with Overdue Loans</h5>
           <Card body>
-            <DataTable
-              columns={[
-                { key: 'loanNumber', label: 'Loan ID' },
-                { key: 'customerName', label: 'Customer', render: (l) => `${l.customerName} (${l.customerPhone})` },
-                { key: 'outstandingBalance', label: 'Remaining', render: (l) => <strong className="text-danger">{formatMoney(l.outstandingBalance)}</strong> },
-                { key: 'dueDate', label: 'Due Date', render: (l) => new Date(l.dueDate).toLocaleDateString() },
-                { key: 'actions', label: '', render: (l) => <Link to={`/loans/${l._id}`} className="btn btn-sm btn-primary">Repay</Link> }
-              ]}
-              data={loans.filter((l) => l.status === 'OVERDUE')}
-              loading={false}
-              page={1}
-              pages={1}
-              emptyText="No overdue loans"
-            />
+            <ListGroup variant="flush">
+              {customers.filter((c) => c.outstandingBalance > 0).slice(0, 5).map((c) => (
+                <ListGroup.Item key={String(c._id)} className="d-flex justify-content-between align-items-center px-0">
+                  <div>
+                    <span className="fw-semibold small">{c.customerName}</span>
+                    <span className="text-muted ms-2 small"><code>{c.customerPhone}</code></span>
+                  </div>
+                  <div className="d-flex gap-2 align-items-center">
+                    <strong className="text-danger">{formatMoney(c.outstandingBalance)}</strong>
+                    <Link to={`/loans/customer/${String(c._id)}`} className="btn btn-sm btn-primary">View &amp; Repay</Link>
+                  </div>
+                </ListGroup.Item>
+              ))}
+            </ListGroup>
           </Card>
         </>
       )}

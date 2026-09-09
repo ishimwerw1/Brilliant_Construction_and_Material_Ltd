@@ -4,6 +4,7 @@ const { protect, authorize } = require('../middleware/auth');
 
 router.use(protect);
 router.get('/', authorize('loans.read'), c.list);
+router.get('/customer/:customerId', authorize('loans.read'), c.getByCustomer);
 router.post('/:id/repay', authorize('loans.update', 'payments.create'), c.repay);
 router.put('/:id/due-date', authorize('loans.update'), c.updateDueDate);
 router.put('/:id/cancel', authorize('loans.cancel'), c.cancel);

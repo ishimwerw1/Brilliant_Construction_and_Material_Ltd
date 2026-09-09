@@ -24,6 +24,7 @@ import Customers from './pages/customers/Customers'
 import CustomerDetail from './pages/customers/CustomerDetail'
 import Loans from './pages/loans/Loans'
 import LoanDetail from './pages/loans/LoanDetail'
+import CustomerLoanDetail from './pages/loans/CustomerLoanDetail'
 
 import Suppliers from './pages/suppliers/Suppliers'
 import SupplierDebts from './pages/supplierDebts/SupplierDebts'
@@ -83,6 +84,7 @@ export default function App() {
               <Route path="/customers" element={<Protected permission="customers.read"><Customers /></Protected>} />
               <Route path="/customers/:id" element={<Protected permission="customers.read"><CustomerDetail /></Protected>} />
               <Route path="/loans" element={<Protected permission="loans.read"><Loans /></Protected>} />
+              <Route path="/loans/customer/:customerId" element={<Protected permission="loans.read"><CustomerLoanDetail /></Protected>} />
               <Route path="/loans/:id" element={<Protected permission="loans.read"><LoanDetail /></Protected>} />
 
               <Route path="/suppliers" element={<Protected permission="suppliers.read"><Suppliers /></Protected>} />
