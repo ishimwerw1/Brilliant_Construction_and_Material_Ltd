@@ -8,7 +8,7 @@ const Sale = require('../models/Sale');
 const Setting = require('../models/Setting');
 const ApiError = require('../utils/ApiError');
 const { nextSequence } = require('../utils/generateCode');
-const { createSale } = require('./saleService');
+const { createSale, removeSaleRecord } = require('./saleService');
 const { notify } = require('./notificationService');
 const { logAction, ACTIONS } = require('./auditService');
 
@@ -344,4 +344,72 @@ const cancelOrder = async ({ orderId, reason, user }) => {
   return order;
 };
 
-module.exports = { createOrder, payOrder, cancelOrder, finalizeOrder };
+/** Permanently deletes an order and reverses every effect it caused.
+ *  - If converted into a sale, the sale (stock, payments, loans) is fully removed too.
+ *  - Deletes the order's payments (ORDER_PAYMENT) and order-linked loans + repayments.
+ *  - Reverses customer totals (totalPaid / outstanding; totalPurchases via the sale removal). */
+const deleteOrder = async ({ orderId, user }) => {
+  const session = await mongoose.startSession();
+  try {
+    let result;
+    await session.withTransaction(async () => {
+      const order = await Order.findById(orderId).session(session);
+      if (!order) throw new ApiError(404, 'Order not found.');
+
+      let salePaymentsTotal = 0;
+      if (order.sale) {
+        const sale = await Sale.findById(order.sale).session(session);
+        if (sale) {
+          const oldTotal = sale.total;
+          const removed = await removeSaleRecord({ sale, session, user });
+          salePaymentsTotal = removed.payments.reduce((s, p) => s + p.amount, 0);
+          if (order.status !== 'CANCELLED') {
+            const customer = await Customer.findById(order.customer).session(session);
+            if (customer) {
+              customer.totalPurchases = Math.max(0, customer.totalPurchases - oldTotal);
+              await customer.save({ session });
+            }
+          }
+        }
+      }
+
+      const loans = await Loan.find({ order: order._id }).session(session);
+      const loanIds = loans.map((l) => l._id);
+      const payments = await Payment.find({
+        $or: [{ order: order._id }, { loan: { $in: loanIds } }]
+      }).session(session);
+
+      const customer = await Customer.findById(order.customer).session(session);
+      if (customer) {
+        if (order.status !== 'CANCELLED') {
+          const openOutstanding = loans.reduce((s, l) => s + (l.outstandingBalance || 0), 0);
+          customer.outstandingBalance = Math.max(0, customer.outstandingBalance - openOutstanding);
+        }
+        // The money actually collected toward this order: its own payments, the deleted sale's
+        // payments (incl. sale-loan repayments) and order-loan repayments.
+        const paidToReverse = salePaymentsTotal + payments.reduce((s, p) => s + p.amount, 0);
+        customer.totalPaid = Math.max(0, customer.totalPaid - paidToReverse);
+        await customer.save({ session });
+      }
+
+      for (const p of payments) await p.deleteOne({ session });
+      for (const l of loans) await l.deleteOne({ session });
+      await order.deleteOne({ session });
+
+      await logAction({
+        user,
+        action: ACTIONS.ORDER_DELETE,
+        entity: 'Order',
+        entityId: order._id,
+        description: `Deleted order ${order.orderNumber} permanently. Payments, loans and linked sale reversed.`
+      });
+
+      result = order;
+    });
+    return result;
+  } finally {
+    session.endSession();
+  }
+};
+
+module.exports = { createOrder, payOrder, cancelOrder, finalizeOrder, deleteOrder };

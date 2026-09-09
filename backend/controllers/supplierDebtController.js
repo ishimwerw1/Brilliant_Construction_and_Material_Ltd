@@ -1,6 +1,7 @@
 const Purchase = require('../models/Purchase');
 const SupplierPayment = require('../models/SupplierPayment');
 const OnDemand = require('../models/OnDemand');
+const mongoose = require('mongoose');
 const ApiError = require('../utils/ApiError');
 const { wrapAsync } = require('../middleware/errorHandler');
 const { logAction, ACTIONS } = require('../services/auditService');
@@ -142,6 +143,69 @@ exports.recordPayment = wrapAsync(async (req, res) => {
 
   const populated = await SupplierPayment.findById(payment._id).populate('createdBy', 'fullName');
   res.status(201).json({ success: true, message: `Payment ${paymentNumber} recorded successfully.`, data: { payment: populated, purchase } });
+});
+
+exports.removePayment = wrapAsync(async (req, res) => {
+  const payment = await SupplierPayment.findById(req.params.id);
+  if (!payment) throw new ApiError(404, 'Supplier payment not found.');
+
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const purchase = payment.purchase
+        ? await Purchase.findById(payment.purchase).session(session)
+        : null;
+
+      if (purchase) {
+        purchase.amountPaid = round2(Math.max(0, (purchase.amountPaid || 0) - payment.amount));
+        purchase.remainingAmount = round2(Math.max(0, purchase.totalAmount - purchase.amountPaid));
+        purchase.paymentStatus = computeDebtStatus(purchase.totalAmount, purchase.amountPaid);
+        await purchase.save({ session });
+
+        // Keep the linked On-Demand transaction's per-supplier balance in sync (reverse direction).
+        if (purchase.onDemand) {
+          const onDemand = await OnDemand.findById(purchase.onDemand).session(session);
+          if (onDemand) {
+            const entry = onDemand.supplierDetails && onDemand.supplierDetails.length
+              ? onDemand.supplierDetails.find((d) => d.purchase && String(d.purchase) === String(purchase._id))
+              : null;
+            if (entry) {
+              entry.amountPaid = round2(Math.max(0, (entry.amountPaid || 0) - payment.amount));
+              entry.balance = round2(Math.max(0, entry.totalCost - entry.amountPaid));
+              entry.paymentStatus = computeDebtStatus(entry.totalCost, entry.amountPaid);
+              entry.payments = (entry.payments || []).filter((p) => p.paymentNumber !== payment.paymentNumber);
+              onDemand.supplierPaid = round2(onDemand.supplierDetails.reduce((s, d) => s + (d.amountPaid || 0), 0));
+              onDemand.supplierBalance = round2(onDemand.supplierDetails.reduce((s, d) => s + (d.balance || 0), 0));
+              onDemand.supplierPaymentStatus = computeDebtStatus(onDemand.supplierPaid + onDemand.supplierBalance, onDemand.supplierPaid);
+            } else if (!onDemand.supplierDetails || onDemand.supplierDetails.length === 0) {
+              onDemand.supplierPaid = round2(Math.max(0, (onDemand.supplierPaid || 0) - payment.amount));
+              onDemand.supplierBalance = round2(Math.max(0, (onDemand.supplierCost || 0) - onDemand.supplierPaid));
+              onDemand.supplierPaymentStatus = computeDebtStatus(onDemand.supplierCost, onDemand.supplierPaid);
+            }
+            if ((onDemand.balance || 0) > 0.001 || (onDemand.supplierBalance || 0) > 0.001) {
+              if (onDemand.status !== 'CANCELLED') onDemand.status = 'ACTIVE';
+            } else if ((onDemand.balance || 0) <= 0.001 && (onDemand.supplierBalance || 0) <= 0.001) {
+              if (onDemand.status !== 'CANCELLED') onDemand.status = 'COMPLETED';
+            }
+            await onDemand.save({ session });
+          }
+        }
+      }
+
+      await payment.deleteOne({ session });
+      await logAction({
+        user: req.user,
+        action: ACTIONS.SUPPLIER_PAYMENT_DELETE,
+        entity: 'SupplierPayment',
+        entityId: payment._id,
+        description: `Deleted supplier payment ${payment.paymentNumber} (RWF ${payment.amount}) and reversed the purchase/on-demand balances.`
+      });
+    });
+  } finally {
+    session.endSession();
+  }
+
+  res.json({ success: true, message: `Supplier payment ${payment.paymentNumber} deleted permanently and balances reversed.` });
 });
 
 exports.summary = wrapAsync(async (req, res) => {

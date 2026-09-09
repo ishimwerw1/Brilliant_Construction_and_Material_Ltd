@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Card, Form, Button } from 'react-bootstrap'
+import { Card, Form, Button, Alert } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import api, { getError } from '../../api/client'
 import DataTable from '../../components/common/DataTable'
 import StatusBadge from '../../components/common/StatusBadge'
+import ConfirmDialog from '../../components/common/ConfirmDialog'
 import { downloadCsv } from '../../utils/export'
 import { useAuth } from '../../context/AuthContext'
 
@@ -20,6 +21,24 @@ export default function Sales() {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const { hasPermission } = useAuth()
+
+  const [toast, setToast] = useState(null)
+  const [deletingSale, setDeletingSale] = useState(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+
+  const confirmDelete = async () => {
+    setDeleteLoading(true)
+    try {
+      const { data } = await api.delete(`/sales/${deletingSale._id}`)
+      setDeletingSale(null)
+      setToast({ type: 'success', msg: data.message })
+      load()
+    } catch (err) {
+      setToast({ type: 'danger', msg: getError(err) })
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -78,6 +97,8 @@ export default function Sales() {
         </div>
       </div>
 
+      {toast && <Alert variant={toast.type} dismissible onClose={() => setToast(null)} className="py-2 small">{toast.msg}</Alert>}
+
       <Card body>
         <div className="d-flex flex-wrap gap-2 mb-3">
           <Form.Control size="sm" placeholder="Search invoice # or customer..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} style={{ maxWidth: 230 }} />
@@ -118,7 +139,14 @@ export default function Sales() {
             { key: 'paymentStatus', label: 'Status', render: (s) => s.status === 'CANCELLED' ? <StatusBadge value="CANCELLED" /> : <StatusBadge value={s.paymentStatus} /> },
             { key: 'cashier', label: 'Cashier', render: (s) => <span className="small">{s.cashier?.fullName}</span> },
             { key: 'actions', label: '', render: (s) => (
-              <Link to={`/sales/${s._id}`} className="btn btn-sm btn-light border"><i className="bi bi-eye" /></Link>
+              <div className="d-flex gap-1">
+                <Link to={`/sales/${s._id}`} className="btn btn-sm btn-light border"><i className="bi bi-eye" /></Link>
+                {hasPermission('sales.delete') && s.saleType !== 'ORDER' && s.saleType !== 'ON_DEMAND' && (
+                  <Button size="sm" variant="light" className="border text-danger" onClick={() => setDeletingSale(s)}>
+                    <i className="bi bi-trash" />
+                  </Button>
+                )}
+              </div>
             )}
           ]}
           data={sales}
@@ -129,6 +157,16 @@ export default function Sales() {
           onPageChange={setPage}
         />
       </Card>
+
+      <ConfirmDialog
+        show={Boolean(deletingSale)}
+        title="Permanently Delete Sale"
+        message={`Delete sale ${deletingSale?.saleNumber || ''} (${Number(deletingSale?.total || 0).toLocaleString()} RWF)? Stock will be restored, its payments and loans removed, and the customer's totals reversed. This cannot be undone.`}
+        confirmLabel="Delete"
+        loading={deleteLoading}
+        onClose={() => setDeletingSale(null)}
+        onConfirm={confirmDelete}
+      />
     </div>
   )
 }

@@ -28,17 +28,20 @@ const PERMISSIONS = [
   'sales.create',
   'sales.read',
   'sales.cancel',
+  'sales.delete',
 
   'orders.create',
   'orders.read',
   'orders.update',
   'orders.cancel',
   'orders.pay',
+  'orders.delete',
 
   'onDemand.create',
   'onDemand.read',
   'onDemand.cancel',
   'onDemand.pay',
+  'onDemand.delete',
 
   'payments.create',
   'payments.read',
@@ -47,6 +50,7 @@ const PERMISSIONS = [
   'loans.read',
   'loans.update',
   'loans.cancel',
+  'loans.delete',
 
   'expenses.create',
   'expenses.read',

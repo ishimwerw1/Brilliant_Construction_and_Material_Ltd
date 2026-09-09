@@ -2,9 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Card, Row, Col, Form, Button, Modal, InputGroup, Alert, Table, ListGroup } from 'react-bootstrap'
 import api, { getError } from '../../api/client'
 import StatusBadge from '../../components/common/StatusBadge'
+import ConfirmDialog from '../../components/common/ConfirmDialog'
 import { formatMoney } from '../../context/LanguageContext'
+import { useAuth } from '../../context/AuthContext'
 
 export default function OnDemandSale() {
+  const { hasPermission } = useAuth()
   const [list, setList] = useState([])
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -22,6 +25,9 @@ export default function OnDemandSale() {
   const [payMethod, setPayMethod] = useState('CASH')
   const [payReference, setPayReference] = useState('')
   const [saving, setSaving] = useState(false)
+  const [toast, setToast] = useState(null)
+  const [deletingTx, setDeletingTx] = useState(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -101,6 +107,20 @@ export default function OnDemandSale() {
       load()
     } catch (err) {
       alert(getError(err))
+    }
+  }
+
+  const confirmDelete = async () => {
+    setDeleteLoading(true)
+    try {
+      const { data } = await api.delete(`/on-demand/${deletingTx._id}`)
+      setDeletingTx(null)
+      setToast({ type: 'success', msg: data.message })
+      load()
+    } catch (err) {
+      setToast({ type: 'danger', msg: getError(err) })
+    } finally {
+      setDeleteLoading(false)
     }
   }
 
@@ -206,6 +226,11 @@ export default function OnDemandSale() {
                         <Button size="sm" variant="light" className="border text-danger" onClick={() => cancelTx(t)} title="Cancel"><i className="bi bi-x-lg" /></Button>
                       </div>
                     )}
+                    {hasPermission('onDemand.delete') && (
+                      <Button size="sm" variant="light" className="border text-danger" onClick={() => setDeletingTx(t)} title="Permanently delete transaction (removes sale, purchases, payments, loans)">
+                        <i className="bi bi-trash" />
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -301,6 +326,16 @@ export default function OnDemandSale() {
           </Button>
         </Modal.Footer>
       </Modal>
+
+      <ConfirmDialog
+        show={Boolean(deletingTx)}
+        title="Permanently Delete On-Demand Transaction"
+        message={`Delete ${deletingTx?.transactionNumber || ''}? Its linked sale, purchases, supplier payments, customer payments and loans are all removed, and every customer/supplier balance is reversed. This cannot be undone.`}
+        confirmLabel="Delete"
+        loading={deleteLoading}
+        onClose={() => setDeletingTx(null)}
+        onConfirm={confirmDelete}
+      />
     </div>
   )
 }
@@ -464,7 +499,8 @@ function NewOnDemandModal({ show, onHide, saving, setSaving, onCreated }) {
         <Modal.Title className="fs-6 fw-bold"><i className="bi bi-shuffle me-2 text-primary" />New On-Demand Sale</Modal.Title>
       </Modal.Header>
       <Modal.Body>
-        {error && <Alert variant="danger" dismissible onClose={() => setError('')} className="py-2 small">{error}</Alert>}
+{error && <Alert variant="danger" dismissible onClose={() => setError('')} className="py-2 small">{error}</Alert>}
+      {toast && <Alert variant={toast.type} dismissible onClose={() => setToast(null)} className="py-2 small">{toast.msg}</Alert>}
         <div className="small text-muted mb-3">
           <i className="bi bi-info-circle me-1" />
           On-demand = products bought from a <strong>supplier</strong> directly for this <strong>customer</strong> (no stock movement).

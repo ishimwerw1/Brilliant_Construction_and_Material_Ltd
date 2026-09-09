@@ -4,13 +4,16 @@ import { useNavigate } from 'react-router-dom'
 import api, { getError } from '../../api/client'
 import DataTable from '../../components/common/DataTable'
 import StatusBadge from '../../components/common/StatusBadge'
+import ConfirmDialog from '../../components/common/ConfirmDialog'
 import QuickAddProduct from '../../components/products/QuickAddProduct'
 import { formatMoney } from '../../context/LanguageContext'
+import { useAuth } from '../../context/AuthContext'
 
 const STATUSES = ['ALL', 'PENDING', 'CONFIRMED', 'PARTIALLY_PAID', 'PAID', 'COMPLETED', 'CANCELLED']
 
 export default function Orders() {
   const navigate = useNavigate()
+  const { hasPermission } = useAuth()
   const [orders, setOrders] = useState([])
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -19,6 +22,11 @@ export default function Orders() {
   const [total, setTotal] = useState(0)
   const [status, setStatus] = useState('ALL')
   const [error, setError] = useState('')
+  const [toast, setToast] = useState(null)
+
+  // Delete confirmation
+  const [deletingOrder, setDeletingOrder] = useState(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   // New order modal
   const [showNew, setShowNew] = useState(false)
@@ -108,6 +116,20 @@ export default function Orders() {
     setPayReference('')
   }
 
+  const confirmDelete = async () => {
+    setDeleteLoading(true)
+    try {
+      const { data } = await api.delete(`/orders/${deletingOrder._id}`)
+      setDeletingOrder(null)
+      setToast({ type: 'success', msg: data.message })
+      load()
+    } catch (err) {
+      setToast({ type: 'danger', msg: getError(err) })
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
+
   const summaryCards = useMemo(() => [
     { label: 'Open Orders', value: stats ? stats.pending + stats.confirmed + stats.partiallyPaid : '-', icon: 'bi-clipboard', color: '#0d3b66' },
     { label: 'Awaiting Payment', value: stats ? stats.partiallyPaid : '-', icon: 'bi-hourglass-split', color: '#b45309' },
@@ -165,7 +187,13 @@ export default function Orders() {
             { key: 'delivery', label: 'Delivery', render: (o) => o.expectedDeliveryDate ? new Date(o.expectedDeliveryDate).toLocaleDateString() : '-' },
             { key: 'status', label: 'Status', render: (o) => <StatusBadge value={o.status} /> },
             { key: 'actions', label: 'Actions', render: (o) => {
-              if (o.status === 'CANCELLED' || o.status === 'COMPLETED') return <span className="text-muted small">—</span>
+              if (o.status === 'CANCELLED' || o.status === 'COMPLETED') {
+                return hasPermission('orders.delete') ? (
+                  <Button size="sm" variant="light" className="border text-danger" onClick={() => setDeletingOrder(o)} title="Permanently delete order (reverses linked sale, payments and loans)">
+                    <i className="bi bi-trash" />
+                  </Button>
+                ) : <span className="text-muted small">—</span>
+              }
               return (
                 <div className="d-flex gap-1">
                   {o.status === 'PENDING' && (
@@ -174,6 +202,11 @@ export default function Orders() {
                   <Button size="sm" variant="primary" onClick={() => openPay(o)}><i className="bi bi-credit-card me-1" />Record Payment</Button>
                   {o.status !== 'PAID' && (
                     <Button size="sm" variant="light" className="border text-danger" onClick={() => cancelOrder(o)}><i className="bi bi-x-lg" /></Button>
+                  )}
+                  {hasPermission('orders.delete') && (
+                    <Button size="sm" variant="light" className="border text-danger" onClick={() => setDeletingOrder(o)} title="Permanently delete order (reverses linked sale, payments and loans)">
+                      <i className="bi bi-trash" />
+                    </Button>
                   )}
                 </div>
               )
@@ -234,6 +267,16 @@ export default function Orders() {
           </Button>
         </Modal.Footer>
       </Modal>
+
+      <ConfirmDialog
+        show={Boolean(deletingOrder)}
+        title="Permanently Delete Order"
+        message={`Delete order ${deletingOrder?.orderNumber || ''}? Any converted sale (with its stock, payments and loans) is removed too, and all customer totals are reversed. This cannot be undone.`}
+        confirmLabel="Delete"
+        loading={deleteLoading}
+        onClose={() => setDeletingOrder(null)}
+        onConfirm={confirmDelete}
+      />
     </div>
   )
 }
@@ -338,7 +381,8 @@ function NewOrderModal({ show, onHide, saving, setSaving, onCreated }) {
         <Modal.Title className="fs-6 fw-bold"><i className="bi bi-plus-circle me-2 text-primary" />New Order</Modal.Title>
       </Modal.Header>
       <Modal.Body>
-        {error && <Alert variant="danger" dismissible onClose={() => setError('')} className="py-2 small">{error}</Alert>}
+{error && <Alert variant="danger" dismissible onClose={() => setError('')} className="py-2 small">{error}</Alert>}
+      {toast && <Alert variant={toast.type} dismissible onClose={() => setToast(null)} className="py-2 small">{toast.msg}</Alert>}
 
         <Form.Label className="small fw-semibold">1. Customer *</Form.Label>
         {customer ? (

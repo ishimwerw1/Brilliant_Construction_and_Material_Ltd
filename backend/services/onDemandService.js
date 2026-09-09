@@ -655,4 +655,70 @@ const resolveCustomer = async ({ customerId, name, phone, session }) => {
   return customer;
 };
 
-module.exports = { createOnDemand, recordOnDemandPayment, cancelOnDemand };
+/** Permanently deletes an On-Demand transaction and reverses every effect it caused.
+ *  - Deletes the linked sale (no stock restore; on-demand goods never enter own stock).
+ *  - Deletes the per-supplier purchases and their supplier payments (removes supplier debts).
+ *  - Deletes customer payments (ON_DEMAND_PAYMENT) and linked loans + repayments.
+ *  - Reverses customer totals. For cancelled transactions the totals were already
+ *    reversed at cancellation time, so only the records are removed. */
+const deleteOnDemand = async ({ onDemandId, user }) => {
+  const session = await mongoose.startSession();
+  try {
+    let result;
+    await session.withTransaction(async () => {
+      const onDemand = await OnDemand.findById(onDemandId).session(session);
+      if (!onDemand) throw new ApiError(404, 'On-Demand transaction not found.');
+
+      const isCancelled = onDemand.status === 'CANCELLED';
+
+      const loans = await Loan.find({ onDemand: onDemand._id }).session(session);
+      const loanIds = loans.map((l) => l._id);
+      const customerPayments = await Payment.find({ onDemand: onDemand._id }).session(session);
+      const loanRepayments = await Payment.find({ loan: { $in: loanIds } }).session(session);
+
+      const purchases = await Purchase.find({ onDemand: onDemand._id }).session(session);
+      const purchaseIds = new Set(purchases.map((p) => String(p._id)));
+      (onDemand.supplierDetails || []).forEach((d) => d.purchase && purchaseIds.add(String(d.purchase)));
+      if (onDemand.purchase) purchaseIds.add(String(onDemand.purchase));
+      const supplierPayments = await SupplierPayment.find({ purchase: { $in: [...purchaseIds] } }).session(session);
+
+      const customer = await Customer.findById(onDemand.customer).session(session);
+      if (customer && !isCancelled) {
+        customer.totalPurchases = Math.max(0, customer.totalPurchases - onDemand.totalAmount);
+        customer.outstandingBalance = Math.max(0, customer.outstandingBalance - onDemand.balance);
+      }
+      if (customer) {
+        const paidToReverse = [...customerPayments, ...loanRepayments].reduce((s, p) => s + p.amount, 0);
+        customer.totalPaid = Math.max(0, customer.totalPaid - paidToReverse);
+        await customer.save({ session });
+      }
+
+      if (onDemand.sale) {
+        const sale = await Sale.findById(onDemand.sale).session(session);
+        if (sale) await sale.deleteOne({ session });
+      }
+
+      for (const p of customerPayments) await p.deleteOne({ session });
+      for (const r of loanRepayments) await r.deleteOne({ session });
+      for (const l of loans) await l.deleteOne({ session });
+      for (const sp of supplierPayments) await sp.deleteOne({ session });
+      for (const p of purchases) await p.deleteOne({ session });
+      await onDemand.deleteOne({ session });
+
+      await logAction({
+        user,
+        action: ACTIONS.ONDEMAND_DELETE,
+        entity: 'OnDemand',
+        entityId: onDemand._id,
+        description: `Deleted on-demand transaction ${onDemand.transactionNumber} permanently. Sale, purchases, supplier payments, loans and customer totals reversed.`
+      });
+
+      result = onDemand;
+    });
+    return result;
+  } finally {
+    session.endSession();
+  }
+};
+
+module.exports = { createOnDemand, recordOnDemandPayment, cancelOnDemand, deleteOnDemand };

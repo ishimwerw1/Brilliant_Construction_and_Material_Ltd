@@ -194,6 +194,36 @@ exports.cancel = wrapAsync(async (req, res) => {
   res.json({ success: true, message: `Loan ${loan.loanNumber} cancelled`, data: { loan } });
 });
 
+exports.remove = wrapAsync(async (req, res) => {
+  const loan = await Loan.findById(req.params.id);
+  if (!loan) throw new ApiError(404, 'Loan not found.');
+  if (loan.status === 'PAID') throw new ApiError(400, 'A fully repaid loan cannot be deleted because repayment records are part of the financial audit.');
+  const Payment = require('../models/Payment');
+  const repayments = await Payment.countDocuments({ loan: loan._id });
+  if (repayments > 0) throw new ApiError(400, 'This loan has repayments on record. Cancel it instead (preserves the audit) or delete the parent sale/order/on-demand.');
+
+  const session = await Loan.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const Customer = require('../models/Customer');
+      const customer = await Customer.findById(loan.customer).session(session);
+      if (customer && ['ACTIVE', 'PARTIALLY_PAID', 'OVERDUE'].includes(loan.status)) {
+        customer.outstandingBalance = Math.max(0, customer.outstandingBalance - (loan.outstandingBalance || 0));
+        await customer.save({ session });
+      }
+      await Loan.deleteOne({ _id: loan._id }, { session });
+      await logAction({
+        user: req.user, action: ACTIONS.LOAN_DELETE, entity: 'Loan', entityId: loan._id,
+        description: `Deleted loan ${loan.loanNumber} permanently (${loan.totalAmount} RWF, outstanding ${loan.outstandingBalance} RWF).`
+      });
+    });
+  } finally {
+    session.endSession();
+  }
+
+  res.json({ success: true, message: `Loan ${loan.loanNumber} deleted permanently and outstanding balance reversed.` });
+});
+
 exports.updateDueDate = wrapAsync(async (req, res) => {
   const { dueDate } = req.body;
   if (!dueDate) throw new ApiError(400, 'A new due date is required.');

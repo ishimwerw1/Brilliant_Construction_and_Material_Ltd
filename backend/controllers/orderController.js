@@ -1,6 +1,6 @@
 const Order = require('../models/Order');
 const ApiError = require('../utils/ApiError');
-const { createOrder, payOrder, cancelOrder } = require('../services/orderService');
+const { createOrder, payOrder, cancelOrder, deleteOrder } = require('../services/orderService');
 const { wrapAsync } = require('../middleware/errorHandler');
 
 exports.list = wrapAsync(async (req, res) => {
@@ -138,4 +138,9 @@ exports.cancel = wrapAsync(async (req, res) => {
   if (!reason?.trim()) throw new ApiError(400, 'A cancellation reason is required.');
   const order = await cancelOrder({ orderId: req.params.id, reason: reason.trim(), user: req.user });
   res.json({ success: true, message: `Order ${order.orderNumber} cancelled`, data: { order } });
+});
+
+exports.remove = wrapAsync(async (req, res) => {
+  const order = await deleteOrder({ orderId: req.params.id, user: req.user });
+  res.json({ success: true, message: `Order ${order.orderNumber} deleted permanently. Payments, loans and the linked sale were reversed.` });
 });

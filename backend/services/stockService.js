@@ -5,7 +5,7 @@ const ApiError = require('../utils/ApiError');
 const { checkLowStock } = require('./notificationService');
 
 const IN_TYPES = ['STOCK_IN', 'STOCK_IN_ON_DEMAND', 'RETURN', 'OPENING_STOCK'];
-const OUT_TYPES = ['SALE', 'ON_DEMAND_SALE', 'DAMAGED', 'LOST'];
+const OUT_TYPES = ['SALE', 'ON_DEMAND_SALE', 'DAMAGED', 'LOST', 'STOCK_IN_REVERSE'];
 
 /**
  * Applies a stock movement to a product, creating a traceable transaction.
@@ -26,8 +26,8 @@ const applyStockMovement = async ({
   const product = await Product.findById(productId).session(session);
   if (!product) throw new ApiError(404, 'Product not found.');
 
-  // ADJUSTMENT receives a signed difference; every other type requires a positive quantity.
-  if (type === 'ADJUSTMENT') {
+  // ADJUSTMENT / ADJUSTMENT_REVERSE receive a signed difference; every other type requires a positive quantity.
+  if (type === 'ADJUSTMENT' || type === 'ADJUSTMENT_REVERSE') {
     if (!Number.isFinite(Number(quantity)) || Number(quantity) === 0) {
       throw new ApiError(400, 'Adjustment difference cannot be zero.');
     }
@@ -48,7 +48,7 @@ const applyStockMovement = async ({
         `Insufficient stock for "${product.name}". Available: ${previousQuantity}, requested: ${quantity}.`
       );
     }
-  } else if (type === 'ADJUSTMENT') {
+  } else if (type === 'ADJUSTMENT' || type === 'ADJUSTMENT_REVERSE') {
     // quantity here is the signed difference
     newQuantity = previousQuantity + quantity;
     if (newQuantity < 0) throw new ApiError(400, 'Stock cannot become negative.');

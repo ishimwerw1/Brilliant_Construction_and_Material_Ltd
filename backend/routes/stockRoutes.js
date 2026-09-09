@@ -8,5 +8,6 @@ router.get('/low', authorize('products.read'), c.lowStock);
 router.get('/out-of-stock', authorize('products.read'), c.outOfStock);
 router.post('/in', authorize('stock.create'), c.stockIn);
 router.post('/adjustments', authorize('stock.adjust'), c.adjust);
+router.delete('/movements/:id', authorize('stock.adjust'), c.removeMovement);
 
 module.exports = router;

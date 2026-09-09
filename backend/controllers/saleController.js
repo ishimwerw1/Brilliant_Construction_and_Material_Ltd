@@ -1,6 +1,6 @@
 const Sale = require('../models/Sale');
 const Setting = require('../models/Setting');
-const { createSale, cancelSale } = require('../services/saleService');
+const { createSale, cancelSale, deleteSale } = require('../services/saleService');
 const ApiError = require('../utils/ApiError');
 const { wrapAsync } = require('../middleware/errorHandler');
 
@@ -56,4 +56,9 @@ exports.cancel = wrapAsync(async (req, res) => {
   if (!reason?.trim()) throw new ApiError(400, 'A cancellation reason is required.');
   const sale = await cancelSale({ saleId: req.params.id, reason: reason.trim(), user: req.user });
   res.json({ success: true, message: `Sale ${sale.saleNumber} cancelled and stock restored`, data: { sale } });
+});
+
+exports.remove = wrapAsync(async (req, res) => {
+  const sale = await deleteSale({ saleId: req.params.id, user: req.user });
+  res.json({ success: true, message: `Sale ${sale.saleNumber} deleted permanently. Stock, payments, loans and customer totals were reversed.` });
 });

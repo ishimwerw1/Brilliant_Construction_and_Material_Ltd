@@ -22,6 +22,8 @@ export default function LoanDetail() {
   const [newDueDate, setNewDueDate] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [showDelete, setShowDelete] = useState(false)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   const load = () => {
     api.get(`/loans/${id}`).then((r) => setData(r.data.data)).catch(() => navigate('/loans'))
@@ -94,6 +96,20 @@ export default function LoanDetail() {
     }
   }
 
+  const doDeleteLoan = async () => {
+    setDeleteLoading(true)
+    try {
+      const { data } = await api.delete(`/loans/${loan._id}`)
+      alert(data.message)
+      navigate('/loans')
+    } catch (err) {
+      alert(getError(err))
+      setShowDelete(false)
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
+
   return (
     <div>
       <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -112,6 +128,11 @@ export default function LoanDetail() {
           )}
           {hasPermission('loans.cancel') && !['PAID', 'CANCELLED'].includes(loan.status) && (
             <Button variant="outline-danger" onClick={() => setShowCancel(true)}><i className="bi bi-x-circle me-1" />Cancel Loan</Button>
+          )}
+          {hasPermission('loans.delete') && loan.status !== 'PAID' && (
+            <Button variant="outline-danger" className="border" onClick={() => setShowDelete(true)} title="Permanently delete this loan and reverse the outstanding balance">
+              <i className="bi bi-trash me-1" />Delete
+            </Button>
           )}
         </div>
       </div>
@@ -275,6 +296,17 @@ export default function LoanDetail() {
       >
         <Form.Control as="textarea" rows={2} placeholder="Reason (required)" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} />
       </ConfirmDialog>
+
+      {/* Delete loan */}
+      <ConfirmDialog
+        show={showDelete}
+        title="Permanently Delete Loan"
+        message={`Delete ${loan.loanNumber} (${formatMoney(loan.totalAmount)})? The customer's outstanding balance is reduced by ${formatMoney(loan.outstandingBalance)}. This cannot be undone, and loans with repayment history cannot be deleted.`}
+        confirmLabel="Delete"
+        loading={deleteLoading}
+        onClose={() => setShowDelete(false)}
+        onConfirm={doDeleteLoan}
+      />
 
       {/* Due date */}
       <Modal show={showDueDate} onHide={() => setShowDueDate(false)} centered>

@@ -478,4 +478,85 @@ const repayLoan = async ({ loanId, amount, method, reference, notes, user }) => 
   }
 };
 
-module.exports = { createSale, cancelSale, repayLoan };
+/** Fully removes a sale document (no soft-delete) inside the caller's transaction.
+ *  - Restores stock unless the sale is cancelled or an on-demand sale.
+ *  - Deletes the sale's payments, linked loans and their repayments.
+ *  - Does NOT touch customer aggregates (the caller owns those) so it can be reused
+ *    by the order delete cascade without double-reversing totals. */
+const removeSaleRecord = async ({ sale, session, user }) => {
+  const loans = await Loan.find({ sale: sale._id }).session(session);
+  const loanIds = loans.map((l) => l._id);
+  const payments = await Payment.find({
+    $or: [{ sale: sale._id }, { loan: { $in: loanIds } }]
+  }).session(session);
+
+  if (sale.status !== 'CANCELLED' && sale.saleType !== 'ON_DEMAND') {
+    for (const item of sale.items) {
+      await applyStockMovement({
+        productId: item.product,
+        type: 'SALE_CANCEL',
+        quantity: item.quantity,
+        reason: `Sale ${sale.saleNumber} deleted: stock restored`,
+        reference: sale.saleNumber,
+        user,
+        session
+      });
+    }
+  }
+
+  for (const p of payments) await p.deleteOne({ session });
+  for (const l of loans) await l.deleteOne({ session });
+  await sale.deleteOne({ session });
+
+  return { payments, loans };
+};
+
+/** Permanently deletes a sale and reverses every effect it caused.
+ *  - Restores stock (unless cancelled / on-demand).
+ *  - Deletes the sale's own payments and linked loans (+ repayments).
+ *  - Reverses customer totals (totalPurchases / totalPaid / outstanding).
+ *  Guard rails: sales that belong to an on-demand transaction or were converted from
+ *  an order must be deleted through their parent record so no accounting is corrupted. */
+const deleteSale = async ({ saleId, user }) => {
+  const session = await mongoose.startSession();
+  try {
+    let result;
+    await session.withTransaction(async () => {
+      const sale = await Sale.findById(saleId).session(session);
+      if (!sale) throw new ApiError(404, 'Sale not found.');
+
+      if (sale.saleType === 'ON_DEMAND' && sale.onDemand) {
+        throw new ApiError(400, 'This sale belongs to an On-Demand transaction. Delete the On-Demand record instead (it includes the sale).');
+      }
+      if (sale.saleType === 'ORDER' && sale.order) {
+        throw new ApiError(400, 'This sale was converted from an order. Delete the order instead (it removes this sale too).');
+      }
+
+      const { payments } = await removeSaleRecord({ sale, session, user });
+
+      const customer = await Customer.findById(sale.customer).session(session);
+      if (customer && sale.status !== 'CANCELLED') {
+        const paidToReverse = payments.reduce((s, p) => s + p.amount, 0);
+        customer.totalPurchases = Math.max(0, customer.totalPurchases - sale.total);
+        customer.totalPaid = Math.max(0, customer.totalPaid - paidToReverse);
+        customer.outstandingBalance = Math.max(0, customer.outstandingBalance - sale.balance);
+        await customer.save({ session });
+      }
+
+      await logAction({
+        user,
+        action: ACTIONS.SALE_DELETE,
+        entity: 'Sale',
+        entityId: sale._id,
+        description: `Deleted sale ${sale.saleNumber} permanently (${sale.total} RWF, paid ${sale.amountPaid} RWF, profit ${sale.totalProfit} RWF). Stock, payments and loans reversed.`
+      });
+
+      result = sale;
+    });
+    return result;
+  } finally {
+    session.endSession();
+  }
+};
+
+module.exports = { createSale, cancelSale, repayLoan, deleteSale, removeSaleRecord };

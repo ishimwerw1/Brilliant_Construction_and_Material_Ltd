@@ -206,11 +206,40 @@ exports.update = wrapAsync(async (req, res) => {
 exports.remove = wrapAsync(async (req, res) => {
   const product = await Product.findById(req.params.id);
   if (!product) throw new ApiError(404, 'Product not found.');
-  product.status = 'INACTIVE';
-  await product.save();
+
+  const Sale = require('../models/Sale');
+  const Purchase = require('../models/Purchase');
+  const Order = require('../models/Order');
+  const OnDemand = require('../models/OnDemand');
+  const StockTransaction = require('../models/StockTransaction');
+
+  const [saleRefs, stockRefs, purchaseRefs, orderRefs, onDemandRefs] = await Promise.all([
+    Sale.countDocuments({ 'items.product': product._id }),
+    StockTransaction.countDocuments({ product: product._id }),
+    Purchase.countDocuments({ 'items.product': product._id }),
+    Order.countDocuments({ 'items.product': product._id }),
+    OnDemand.countDocuments({ 'items.product': product._id })
+  ]);
+  const historyCount = saleRefs + stockRefs + purchaseRefs + orderRefs + onDemandRefs;
+
+  if (historyCount > 0) {
+    // Financial history references this product (sales, purchases, stock, orders, on-demand all keep
+    // name/SKU snapshots). Hard-deleting would gut the audit trail, so it is permanently deactivated
+    // and hidden from every active list, dropdown, search and stock/report query.
+    product.status = 'INACTIVE';
+    await product.save();
+    await logAction({
+      user: req.user, action: ACTIONS.PRODUCT_DELETE, entity: 'Product', entityId: product._id,
+      description: `Deactivated product "${product.name}" (${product.sku}) - has ${historyCount} historical reference(s).`
+    });
+    return res.json({ success: true, message: `Product deactivated permanently. It has transaction history (${historyCount} reference(s)) so it was kept for the audit trail, but it is hidden everywhere.` });
+  }
+
+  // No ties to any financial records: perform a real database deletion.
+  await Product.deleteOne({ _id: product._id });
   await logAction({
     user: req.user, action: ACTIONS.PRODUCT_DELETE, entity: 'Product', entityId: product._id,
-    description: `Deactivated product "${product.name}" (${product.sku}).`
+    description: `Deleted product "${product.name}" (${product.sku}) permanently.`
   });
-  res.json({ success: true, message: 'Product deactivated' });
+  res.json({ success: true, message: `Product "${product.name}" deleted permanently.` });
 });

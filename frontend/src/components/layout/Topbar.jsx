@@ -38,6 +38,15 @@ export default function Topbar({ onToggleSidebar }) {
     loadNotifications()
   }
 
+  const clearNotifications = async () => {
+    try {
+      const { data } = await api.delete('/notifications')
+      await loadNotifications()
+      // eslint-disable-next-line no-alert
+      window.alert(data.message || 'All notifications cleared')
+    } catch { /* silent */ }
+  }
+
   const handleLogout = async () => {
     await logout()
     navigate('/login')
@@ -67,11 +76,18 @@ export default function Topbar({ onToggleSidebar }) {
           <Dropdown.Menu className="shadow border-0 mw-100" style={{ width: 'min(340px, 92vw)', maxHeight: '80vh', overflowY: 'auto' }} show={showNotif} onToggle={(v) => { setShowNotif(v); if (v) loadNotifications() }}>
             <div className="d-flex justify-content-between align-items-center px-3 py-2 border-bottom sticky-top bg-white">
               <strong className="small">{t('notifications')}</strong>
-              {unreadCount > 0 && (
-                <Button variant="link" size="sm" className="p-0 text-decoration-none small" onClick={markAllRead}>
-                  {t('markAllRead')}
-                </Button>
-              )}
+              <div className="d-flex align-items-center gap-2">
+                {notifications.length > 0 && (
+                  <Button variant="link" size="sm" className="p-0 text-decoration-none small text-danger" onClick={clearNotifications} title="Delete all notifications">
+                    <i className="bi bi-trash me-1" />Clear
+                  </Button>
+                )}
+                {unreadCount > 0 && (
+                  <Button variant="link" size="sm" className="p-0 text-decoration-none small" onClick={markAllRead}>
+                    {t('markAllRead')}
+                  </Button>
+                )}
+              </div>
             </div>
             {notifications.length === 0 ? (
               <div className="text-center text-muted py-4 small">{t('noNotifications')}</div>

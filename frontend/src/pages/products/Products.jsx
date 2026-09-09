@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Card, Button, Form, Badge } from 'react-bootstrap'
+import { Card, Button, Form, Badge, Alert } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import api, { getError } from '../../api/client'
 import DataTable from '../../components/common/DataTable'
@@ -17,11 +17,13 @@ export default function Products() {
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
   const [stockState, setStockState] = useState('')
+  const [status, setStatus] = useState('ACTIVE')
   const [sort, setSort] = useState('-createdAt')
   const [categories, setCategories] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
   const [deactivating, setDeactivating] = useState(null)
+  const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState(null)
   const { hasPermission } = useAuth()
 
@@ -32,6 +34,7 @@ export default function Products() {
       if (search) params.search = search
       if (category) params.category = category
       if (stockState) params.stockState = stockState
+      if (status) params.status = status
       const { data } = await api.get('/products', { params })
       setProducts(data.data.products)
       setPages(data.data.pages)
@@ -41,7 +44,7 @@ export default function Products() {
     } finally {
       setLoading(false)
     }
-  }, [page, search, category, stockState, sort])
+  }, [page, search, category, stockState, status, sort])
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
@@ -49,13 +52,16 @@ export default function Products() {
   }, [])
 
   const deactivate = async () => {
+    setDeleting(true)
     try {
-      await api.delete(`/products/${deactivating._id}`)
+      const { data } = await api.delete(`/products/${deactivating._id}`)
       setDeactivating(null)
+      setToast({ type: 'success', msg: data.message })
       load()
     } catch (err) {
       setToast({ type: 'danger', msg: getError(err) })
-      setDeactivating(null)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -129,6 +135,11 @@ export default function Products() {
                 <option value="low">Low Stock</option>
                 <option value="out">Out of Stock</option>
               </Form.Select>
+              <Form.Select size="sm" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1) }} style={{ width: 150 }}>
+                <option value="ACTIVE">Active only</option>
+                <option value="">All (incl. deactivated)</option>
+                <option value="INACTIVE">Deactivated only</option>
+              </Form.Select>
               <Form.Select size="sm" value={sort} onChange={(e) => setSort(e.target.value)} style={{ width: 160 }}>
                 <option value="-createdAt">Newest first</option>
                 <option value="name">Name A-Z</option>
@@ -145,10 +156,10 @@ export default function Products() {
 
       <ConfirmDialog
         show={Boolean(deactivating)}
-        title="Deactivate Product"
-        message={`Are you sure you want to deactivate "${deactivating?.name}"? It will no longer be sellable.`}
-        confirmLabel="Deactivate"
-        loading={false}
+        title="Delete Product"
+        message={`Delete "${deactivating?.name}"? If it has transaction history (sales, purchases, stock, orders) it will be permanently deactivated and hidden everywhere instead. Otherwise it is removed from the database entirely.`}
+        confirmLabel="Delete"
+        loading={deleting}
         onClose={() => setDeactivating(null)}
         onConfirm={deactivate}
       />

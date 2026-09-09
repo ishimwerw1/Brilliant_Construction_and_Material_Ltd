@@ -7,5 +7,6 @@ router.get('/', authorize('sales.read'), c.list);
 router.post('/', authorize('sales.create'), c.create);
 router.get('/:id', authorize('sales.read'), c.getOne);
 router.put('/:id/cancel', authorize('sales.cancel'), c.cancel);
+router.delete('/:id', authorize('sales.delete', 'sales.cancel'), c.remove);
 
 module.exports = router;

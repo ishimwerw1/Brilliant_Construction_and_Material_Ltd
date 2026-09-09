@@ -174,3 +174,56 @@ exports.outOfStock = wrapAsync(async (req, res) => {
   const products = await Product.find({ status: 'ACTIVE', quantity: 0 }).sort({ name: 1 }).populate('category', 'name').limit(200);
   res.json({ success: true, data: { products } });
 });
+
+/** DELETE /api/stock/movements/:id - permanently removes a STOCK_IN or ADJUSTMENT movement by reversing its effect.
+ *  Other movement types are financial/historical and cannot be deleted (use sales/orders/on-demand flows). */
+exports.removeMovement = wrapAsync(async (req, res) => {
+  const txn = await StockTransaction.findById(req.params.id);
+  if (!txn) throw new ApiError(404, 'Stock movement not found.');
+  if (!['STOCK_IN', 'ADJUSTMENT'].includes(txn.type)) {
+    throw new ApiError(400, 'Only STOCK_IN and ADJUSTMENT movements can be deleted. Sales, on-demand, opening stock and other types are reversed through their business flows.');
+  }
+
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      if (txn.type === 'STOCK_IN') {
+        await applyStockMovement({
+          productId: txn.product,
+          type: 'STOCK_IN_REVERSE',
+          quantity: txn.quantity,
+          reason: `Reversed ${txn.reference} (stock-in ${txn._id} deleted)`,
+          reference: txn.reference,
+          user: req.user,
+          session
+        });
+        await logAction({
+          user: req.user, action: ACTIONS.STOCK_IN_REVERSE, entity: 'StockTransaction', entityId: txn._id,
+          description: `Deleted stock-in movement ${txn.reference} for "${txn.productName}" (${txn.quantity} pcs) and reversed the stock effect.`,
+          details: { reference: txn.reference, quantity: txn.quantity },
+          session
+        });
+      } else {
+        await applyStockMovement({
+          productId: txn.product,
+          type: 'ADJUSTMENT_REVERSE',
+          quantity: -txn.quantity,
+          reason: `Reversed adjustment ${txn.reference} (movement ${txn._id} deleted)`,
+          reference: txn.reference,
+          user: req.user,
+          session
+        });
+        await logAction({
+          user: req.user, action: ACTIONS.ADJUSTMENT_REVERSE, entity: 'StockTransaction', entityId: txn._id,
+          description: `Deleted adjustment ${txn.reference} for "${txn.productName}" (diff ${txn.quantity}) and reversed the stock effect.`,
+          details: { reference: txn.reference, quantity: txn.quantity },
+          session
+        });
+      }
+      await txn.deleteOne({ session });
+    });
+    res.json({ success: true, message: `Movement for "${txn.productName}" deleted permanently and the stock effect was reversed.` });
+  } finally {
+    session.endSession();
+  }
+});

@@ -1,6 +1,6 @@
 const OnDemand = require('../models/OnDemand');
 const ApiError = require('../utils/ApiError');
-const { createOnDemand, recordOnDemandPayment, cancelOnDemand } = require('../services/onDemandService');
+const { createOnDemand, recordOnDemandPayment, cancelOnDemand, deleteOnDemand } = require('../services/onDemandService');
 const { wrapAsync } = require('../middleware/errorHandler');
 
 exports.list = wrapAsync(async (req, res) => {
@@ -106,4 +106,9 @@ exports.cancel = wrapAsync(async (req, res) => {
   if (!reason?.trim()) throw new ApiError(400, 'A cancellation reason is required.');
   const transaction = await cancelOnDemand({ onDemandId: req.params.id, reason: reason.trim(), user: req.user });
   res.json({ success: true, message: `On-Demand transaction ${transaction.transactionNumber} cancelled.`, data: { transaction } });
+});
+
+exports.remove = wrapAsync(async (req, res) => {
+  const transaction = await deleteOnDemand({ onDemandId: req.params.id, user: req.user });
+  res.json({ success: true, message: `On-Demand transaction ${transaction.transactionNumber} deleted permanently. Sale, purchases, supplier payments, loans and customer totals were reversed.` });
 });
