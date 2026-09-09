@@ -69,7 +69,7 @@ export default function Products() {
     <div>
       <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <h4 className="fw-bold mb-0" style={{ color: '#0d3b66' }}>
-          <i className="bi bi-box-seam me-2" />Products <Badge bg="" className="badge-soft-primary">{total}</Badge>
+          <i className="bi bi-box-seam me-2" />Products <Badge bg="" className="badge-soft-primary rounded-pill px-2 py-1 ms-1" style={{ fontSize: '0.85rem' }}>{total}</Badge>
         </h4>
         {hasPermission('products.create') && (
           <Button onClick={() => { setEditing(null); setShowForm(true) }}>
@@ -92,9 +92,13 @@ export default function Products() {
             { key: 'buyingPrice', label: 'Buy', render: (p) => `${Number(p.buyingPrice).toLocaleString()} RWF` },
             { key: 'sellingPrice', label: 'Sell', render: (p) => `${Number(p.sellingPrice).toLocaleString()} RWF` },
             { key: 'quantity', label: 'Stock', render: (p) => (
-              <span className={`fw-semibold ${p.quantity === 0 ? 'text-danger' : p.quantity <= p.minStockLevel ? 'text-warning' : ''}`}>
-                {p.quantity} <small className="text-muted fw-normal">{p.unit}(s)</small>
-              </span>
+              <Badge
+                bg=""
+                className={`rounded-pill badge-soft-${p.quantity === 0 ? 'danger' : p.quantity <= p.minStockLevel ? 'warning' : 'success'} px-2 py-1`}
+                title={`In stock: ${p.quantity} ${p.unit}(s)${p.quantity <= p.minStockLevel ? ` · low stock (min ${p.minStockLevel})` : ''}`}
+              >
+                <span className="fw-bold">{p.quantity}</span> <small className="fw-normal">{p.unit}(s)</small>
+              </Badge>
             )},
             { key: 'state', label: 'Status', render: (p) => <StatusBadge value={p.stockState} /> },
             { key: 'actions', label: 'Actions', render: (p) => (
