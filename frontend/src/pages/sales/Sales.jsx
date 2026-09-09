@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Card, Form, Button, Alert } from 'react-bootstrap'
+import { Card, Form, Button, Alert, Badge } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import api, { getError } from '../../api/client'
 import DataTable from '../../components/common/DataTable'
@@ -137,6 +137,13 @@ export default function Sales() {
             )},
             { key: 'paymentMethod', label: 'Method', render: (s) => <StatusBadge value={s.paymentMethod} /> },
             { key: 'paymentStatus', label: 'Status', render: (s) => s.status === 'CANCELLED' ? <StatusBadge value="CANCELLED" /> : <StatusBadge value={s.paymentStatus} /> },
+            { key: 'attachment', label: 'Receipt', render: (s) => s.attachment ? (
+              <Link to={`/sales/${s._id}`} title={s.attachment.filename} className="text-decoration-none">
+                <Badge bg="" className="badge-soft-info small" title={s.attachment.filename}>
+                  <i className="bi bi-paperclip me-1" />{s.attachment.mimeType?.startsWith('image') ? 'Img' : 'PDF'}
+                </Badge>
+              </Link>
+            ) : <span className="text-muted small">—</span> },
             { key: 'cashier', label: 'Cashier', render: (s) => <span className="small">{s.cashier?.fullName}</span> },
             { key: 'actions', label: '', render: (s) => (
               <div className="d-flex gap-1">

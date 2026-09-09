@@ -272,6 +272,19 @@ export default function Purchases() {
               <span className={p.remainingAmount > 0 ? 'text-danger fw-semibold small' : 'text-muted small'}>{formatMoney(p.remainingAmount)}</span>
             )},
             { key: 'paymentStatus', label: 'Status', render: (p) => <StatusBadge value={p.paymentStatus} /> },
+            { key: 'attachment', label: 'Receipt', render: (p) => p.attachment ? (
+              <button
+                type="button"
+                className="btn btn-link text-decoration-none p-0"
+                style={{ color: '#0d3b66' }}
+                title={`View ${p.attachment.filename}`}
+                onClick={() => setDetail(p)}
+              >
+                <Badge bg="" className="badge-soft-info small">
+                  <i className="bi bi-paperclip me-1" />{p.attachment.mimeType?.startsWith('image') ? 'Img' : 'PDF'}
+                </Badge>
+              </button>
+            ) : <span className="text-muted small">—</span> },
             { key: 'createdBy', label: 'Created By', render: (p) => <span className="small">{p.createdBy?.fullName || '-'}</span> },
             { key: 'actions', label: 'Actions', render: (p) => (
               <div className="d-flex gap-1">

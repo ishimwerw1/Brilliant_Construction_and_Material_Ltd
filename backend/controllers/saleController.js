@@ -42,6 +42,7 @@ exports.list = wrapAsync(async (req, res) => {
   const [sales, total] = await Promise.all([
     Sale.find(filter).populate('customer', 'name phone').populate('cashier', 'fullName')
       .populate('order', 'orderNumber')
+      .select('-attachment.data')
       .sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
     Sale.countDocuments(filter)
   ]);
