@@ -248,6 +248,7 @@ function NewOnDemandModal({ show, onHide, saving, setSaving, onCreated }) {
   const [savingSupplier, setSavingSupplier] = useState(false)
 
   const [lines, setLines] = useState([])
+  const [productSearch, setProductSearch] = useState('')
   const [amountPaid, setAmountPaid] = useState('')
   const [supplierPaid, setSupplierPaid] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('CASH')
@@ -265,6 +266,14 @@ function NewOnDemandModal({ show, onHide, saving, setSaving, onCreated }) {
       .then((r) => setSuppliers(r.data.data.suppliers))
       .catch((e) => setError(getError(e)))
   }, [show])
+
+  const filteredProducts = useMemo(() => {
+    const q = productSearch.trim().toLowerCase()
+    if (!q) return products
+    return products.filter((p) =>
+      p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q) || (p.barcode || '').toLowerCase().includes(q)
+    )
+  }, [products, productSearch])
 
   useEffect(() => {
     if (!customerQuery.trim() || customerQuery.length < 2) { setCustomerResults([]); return }
@@ -350,7 +359,7 @@ function NewOnDemandModal({ show, onHide, saving, setSaving, onCreated }) {
         notes: notes || undefined
       })
       setCustomer(null); setCustomerQuery(''); setSupplierId(''); setLines([])
-      setAmountPaid(''); setSupplierPaid(''); setPaymentReference(''); setDueDate(''); setNotes('')
+      setProductSearch(''); setAmountPaid(''); setSupplierPaid(''); setPaymentReference(''); setDueDate(''); setNotes('')
       onCreated()
     } catch (err) {
       setError(getError(err))
@@ -421,12 +430,16 @@ function NewOnDemandModal({ show, onHide, saving, setSaving, onCreated }) {
         </Row>
 
         <Form.Label className="small fw-semibold mt-3">3. Products</Form.Label>
+        <InputGroup size="sm" className="mb-2">
+          <InputGroup.Text><i className="bi bi-search" /></InputGroup.Text>
+          <Form.Control placeholder="Search products by name, SKU or barcode..." value={productSearch} onChange={(e) => setProductSearch(e.target.value)} />
+        </InputGroup>
         {lines.map((l, idx) => (
           <Row key={idx} className="g-2 mb-2 align-items-center">
             <Col md={4}>
               <Form.Select size="sm" value={l.product} onChange={(e) => pickProduct(idx, e.target.value)}>
-                <option value="">Pick from catalogue or type below...</option>
-                {products.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
+                <option value="">{filteredProducts.length === 0 && productSearch ? 'No products found' : 'Pick from catalogue or type below...'}</option>
+                {filteredProducts.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
               </Form.Select>
             </Col>
             <Col md={2}>

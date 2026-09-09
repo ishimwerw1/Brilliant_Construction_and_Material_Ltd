@@ -245,6 +245,7 @@ function NewOrderModal({ show, onHide, saving, setSaving, onCreated }) {
   const [customerResults, setCustomerResults] = useState([])
   const [customer, setCustomer] = useState(null)
   const [lines, setLines] = useState([])
+  const [productSearch, setProductSearch] = useState('')
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('')
   const [notes, setNotes] = useState('')
   const [error, setError] = useState('')
@@ -255,6 +256,14 @@ function NewOrderModal({ show, onHide, saving, setSaving, onCreated }) {
       .then((r) => setProducts(r.data.data.products))
       .catch((e) => setError(getError(e)))
   }, [show])
+
+  const filteredProducts = useMemo(() => {
+    const q = productSearch.trim().toLowerCase()
+    if (!q) return products
+    return products.filter((p) =>
+      p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q) || (p.barcode || '').toLowerCase().includes(q)
+    )
+  }, [products, productSearch])
 
   useEffect(() => {
     if (!customerQuery.trim() || customerQuery.length < 2) { setCustomerResults([]); return }
@@ -301,7 +310,7 @@ function NewOrderModal({ show, onHide, saving, setSaving, onCreated }) {
         expectedDeliveryDate: expectedDeliveryDate || undefined,
         notes: notes || undefined
       })
-      setCustomer(null); setCustomerQuery(''); setLines([]); setExpectedDeliveryDate(''); setNotes('')
+      setCustomer(null); setCustomerQuery(''); setLines([]); setProductSearch(''); setExpectedDeliveryDate(''); setNotes('')
       onCreated()
     } catch (err) {
       setError(getError(err))
@@ -344,12 +353,16 @@ function NewOrderModal({ show, onHide, saving, setSaving, onCreated }) {
         )}
 
         <Form.Label className="small fw-semibold">2. Products (you can adjust prices/costs per line)</Form.Label>
+        <InputGroup size="sm" className="mb-2">
+          <InputGroup.Text><i className="bi bi-search" /></InputGroup.Text>
+          <Form.Control placeholder="Search products by name, SKU or barcode..." value={productSearch} onChange={(e) => setProductSearch(e.target.value)} />
+        </InputGroup>
         {lines.map((l, idx) => (
           <Row key={idx} className="g-2 mb-2 align-items-end">
             <Col sm={5}>
               <Form.Select size="sm" value={l.product} onChange={(e) => pickProduct(idx, e.target.value)}>
-                <option value="">Select product...</option>
-                {products.map((p) => <option key={p._id} value={p._id}>{p.name} ({p.sku})</option>)}
+                <option value="">{filteredProducts.length === 0 && productSearch ? 'No products found' : 'Select product...'}</option>
+                {filteredProducts.map((p) => <option key={p._id} value={p._id}>{p.name} ({p.sku})</option>)}
               </Form.Select>
             </Col>
             <Col sm={1}>
