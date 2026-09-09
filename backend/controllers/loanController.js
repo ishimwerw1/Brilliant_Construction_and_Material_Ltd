@@ -1,6 +1,6 @@
 const Loan = require('../models/Loan');
 const ApiError = require('../utils/ApiError');
-const { repayLoan } = require('../services/saleService');
+const { repayLoan, repayCustomerLoans } = require('../services/saleService');
 const { logAction, ACTIONS } = require('../services/auditService');
 const { wrapAsync } = require('../middleware/errorHandler');
 
@@ -147,6 +147,26 @@ exports.repay = wrapAsync(async (req, res) => {
     success: true,
     message: `Repayment recorded (${payment.paymentNumber}). Remaining: ${loan.outstandingBalance.toLocaleString()} RWF`,
     data: { loan, payment }
+  });
+});
+
+/** Record one payment that is automatically distributed across ALL of the customer's open loans (oldest first). */
+exports.payCustomer = wrapAsync(async (req, res) => {
+  const { amount, method = 'CASH', reference, notes } = req.body;
+  const result = await repayCustomerLoans({
+    customerId: req.params.customerId,
+    amount,
+    method,
+    reference,
+    notes,
+    user: req.user
+  });
+  const remaining = Number(result.customerOutstanding) || 0;
+  res.status(201).json({
+    success: true,
+    message: `Payment of ${result.appliedAmount.toLocaleString()} RWF recorded across ${result.loans.length} loan(s). ` +
+      (remaining > 0 ? `Remaining balance: ${remaining.toLocaleString()} RWF` : 'All loan debts are now fully paid off.'),
+    data: result
   });
 });
 

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Card, Row, Col, Form, Badge, ListGroup, Button, Modal, Alert } from 'react-bootstrap'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Card, Row, Col, Form, Badge, ListGroup, Button, Modal, Alert, Table } from 'react-bootstrap'
 import { Link } from 'react-router-dom'
 import api, { getError } from '../../api/client'
 import DataTable from '../../components/common/DataTable'
@@ -25,7 +25,8 @@ export default function Loans() {
 
   const [paying, setPaying] = useState(null)
   const [payLoans, setPayLoans] = useState([])
-  const [payForm, setPayForm] = useState({ loanId: '', amount: '', method: 'CASH', reference: '', notes: '' })
+  const [openTotal, setOpenTotal] = useState(0)
+  const [payForm, setPayForm] = useState({ amount: '', method: 'CASH', reference: '', notes: '' })
   const [savingPay, setSavingPay] = useState(false)
   const [payError, setPayError] = useState('')
 
@@ -59,46 +60,59 @@ export default function Loans() {
     setPayError('')
     try {
       const { data } = await api.get(`/loans/customer/${String(c._id)}`)
-      const open = (data.data.loans || [])
-        .filter((l) => OPEN_STATUSES.includes(l.status))
-        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+      const open = (data.data.loans || []).filter((l) => OPEN_STATUSES.includes(l.status))
       if (open.length === 0) return setPayError('This customer has no open loans to record a payment against.')
+      const total = open.reduce((s, l) => s + Number(l.outstandingBalance || 0), 0)
       setPayLoans(open)
-      setPayForm({ loanId: open[0]._id, amount: String(open[0].outstandingBalance), method: 'CASH', reference: '', notes: '' })
+      setOpenTotal(total)
+      setPayForm({ amount: String(total), method: 'CASH', reference: '', notes: '' })
       setPaying(c)
     } catch (err) {
       setPayError(getError(err))
     }
   }
 
-  const selLoan = payLoans.find((l) => String(l._id) === String(payForm.loanId))
   const amount = Number(payForm.amount || 0)
-  const remainingAfter = selLoan ? Math.max(0, Number(selLoan.outstandingBalance) - amount) : 0
-  const isFullyPaid = Boolean(selLoan && amount > 0 && remainingAfter <= 0.001)
+
+  const preview = useMemo(() => {
+    if (!payLoans.length || amount <= 0) return null
+    let remaining = amount
+    const rows = []
+    for (const l of [...payLoans].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))) {
+      if (remaining <= 0.001) break
+      const due = Number(l.outstandingBalance)
+      const applied = Math.min(remaining, due)
+      remaining = Math.max(0, remaining - applied)
+      rows.push({ loan: l, applied, remainingAfter: Math.max(0, due - applied) })
+    }
+    return { rows, leftover: remaining }
+  }, [payLoans, amount])
+
+  const isFullyPaid = Boolean(openTotal > 0 && amount > 0 && amount >= openTotal - 0.001)
 
   const recordPayment = async () => {
-    if (!selLoan) return
+    if (!paying) return
     if (!amount || amount <= 0) return setPayError('Enter a valid amount.')
-    if (amount > Number(selLoan.outstandingBalance)) {
-      return setPayError(`Amount cannot exceed the outstanding balance of ${formatMoney(selLoan.outstandingBalance)}.`)
-    }
+    if (amount > openTotal) return setPayError(`Amount cannot exceed the total outstanding balance of ${formatMoney(openTotal)}.`)
     setSavingPay(true)
     setPayError('')
     try {
-      const { data } = await api.post(`/loans/${payForm.loanId}/repay`, {
+      const { data } = await api.post(`/loans/customer/${String(paying._id)}/pay`, {
         amount,
         method: payForm.method,
         reference: payForm.reference || undefined,
         notes: payForm.notes || undefined
       })
-      const remaining = Number(data.data.loan.outstandingBalance)
+      const paidCount = data.data.loans.length
+      const remaining = Number(data.data.customerOutstanding)
       setSuccessMsg(
-        `Payment of ${formatMoney(amount)} recorded (${data.data.payment.paymentNumber}). ` +
-        (remaining > 0 ? `Remaining balance: ${formatMoney(remaining)}.` : 'This loan is now fully paid off.')
+        `Payment of ${formatMoney(amount)} recorded across ${paidCount} loan${paidCount === 1 ? '' : 's'}. ` +
+        (remaining > 0 ? `Remaining balance: ${formatMoney(remaining)}.` : 'All loan debts are now fully paid off.')
       )
       setPaying(null)
       setPayLoans([])
-      setPayForm({ loanId: '', amount: '', method: 'CASH', reference: '', notes: '' })
+      setOpenTotal(0)
+      setPayForm({ amount: '', method: 'CASH', reference: '', notes: '' })
       load()
     } catch (err) {
       setPayError(getError(err))
@@ -202,36 +216,42 @@ export default function Loans() {
           <Modal.Body>
             {payError && <Alert variant="danger" dismissible onClose={() => setPayError('')} className="py-2 small">{payError}</Alert>}
 
-            {payLoans.length > 1 && selLoan && (
-              <Form.Group className="mb-2">
-                <Form.Label className="small fw-semibold">Apply to Loan *</Form.Label>
-                <Form.Select
-                  value={payForm.loanId}
-                  onChange={(e) => {
-                    const l = payLoans.find((x) => String(x._id) === e.target.value)
-                    setPayForm((f) => ({ ...f, loanId: e.target.value, amount: l ? String(l.outstandingBalance) : f.amount }))
-                  }}
-                >
-                  {payLoans.map((l) => (
-                    <option key={String(l._id)} value={String(l._id)}>
-                      {l.loanNumber} — {formatMoney(l.outstandingBalance)} outstanding ({l.status.replace(/_/g, ' ')})
-                    </option>
-                  ))}
-                </Form.Select>
-              </Form.Group>
-            )}
-
-            {selLoan && (
+            {payLoans.length > 0 && (
               <Alert variant="info" className="py-2 small">
-                {payLoans.length > 1 ? `Selected loan ${selLoan.loanNumber} — ` : `Loan ${selLoan.loanNumber} — `}
-                Outstanding balance: <strong>{formatMoney(selLoan.outstandingBalance)}</strong>
+                <i className="bi bi-collection me-1" />Total loan debt: <strong>{formatMoney(openTotal)}</strong> across {payLoans.length} open loan{payLoans.length === 1 ? '' : 's'}.
               </Alert>
             )}
 
             <Form.Group className="mb-2">
               <Form.Label className="small fw-semibold">Payment Amount (RWF) *</Form.Label>
-              <Form.Control type="number" min="1" max={selLoan?.outstandingBalance} value={payForm.amount} onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })} required autoFocus />
+              <Form.Control type="number" min="1" max={openTotal} value={payForm.amount} onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })} required autoFocus />
             </Form.Group>
+
+            {preview && (
+              <div className="mb-2">
+                <div className="small fw-semibold mb-1">How it will be applied (oldest loan first):</div>
+                <Table size="sm" bordered className="small mb-0 align-middle">
+                  <thead>
+                    <tr>
+                      <th>Loan #</th>
+                      <th className="text-end">Balance</th>
+                      <th className="text-end">Applied</th>
+                      <th className="text-end">Remaining</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.rows.map((r) => (
+                      <tr key={String(r.loan._id)}>
+                        <td><code>{r.loan.loanNumber}</code></td>
+                        <td className="text-end">{formatMoney(r.loan.outstandingBalance)}</td>
+                        <td className="text-end text-success fw-semibold">{formatMoney(r.applied)}</td>
+                        <td className="text-end">{formatMoney(r.remainingAfter)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </div>
+            )}
 
             <Form.Group className="mb-2">
               <Form.Label className="small fw-semibold">Method *</Form.Label>
@@ -254,11 +274,11 @@ export default function Loans() {
               <Form.Control as="textarea" rows={2} value={payForm.notes} onChange={(e) => setPayForm({ ...payForm, notes: e.target.value })} />
             </Form.Group>
 
-            {amount > 0 && selLoan && (
+            {amount > 0 && openTotal > 0 && (
               <Alert variant={isFullyPaid ? 'success' : 'warning'} className="py-2 small mb-0">
                 {isFullyPaid
-                  ? <><i className="bi bi-check-circle me-1" />This loan will be <strong>fully paid off</strong>.</>
-                  : <>After this payment the remaining balance will be <strong>{formatMoney(remainingAfter)}</strong> on this loan.</>}
+                  ? <><i className="bi bi-check-circle me-1" />All loan debts will be <strong>fully paid off</strong>.</>
+                  : <>After this payment the remaining total debt will be <strong>{formatMoney(Math.max(0, openTotal - amount))}</strong>.</>}
               </Alert>
             )}
           </Modal.Body>

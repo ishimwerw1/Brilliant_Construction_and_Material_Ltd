@@ -475,6 +475,138 @@ const repayLoan = async ({ loanId, amount, method, reference, notes, user }) => 
   }
 };
 
+/**
+ * Applies a single payment across ALL of a customer's open loans (oldest first) inside one
+ * transaction. The payment amount is distributed loan-by-loan until it is exhausted, so an
+ * entered amount automatically clears the full total debt when it is large enough.
+ */
+const repayCustomerLoans = async ({ customerId, amount, method, reference, notes, user }) => {
+  const payAmount = Number(amount);
+  if (!payAmount || payAmount <= 0) throw new ApiError(400, 'Payment amount must be greater than zero.');
+  if (!['CASH', 'MOMO', 'BANK'].includes(method)) throw new ApiError(400, 'Payment method must be CASH, MOMO or BANK.');
+
+  const session = await mongoose.startSession();
+  try {
+    let result;
+    await session.withTransaction(async () => {
+      const customer = await Customer.findById(customerId).session(session);
+      if (!customer) throw new ApiError(404, 'Customer not found.');
+
+      const loans = await Loan.find({
+        customer: customerId,
+        status: { $in: ['ACTIVE', 'PARTIALLY_PAID', 'OVERDUE'] }
+      }).sort({ createdAt: 1 }).session(session);
+
+      let remaining = payAmount;
+      let applied = 0;
+      const payments = [];
+      const touchedLoans = [];
+
+      for (const loan of loans) {
+        if (remaining <= 0.001) break;
+        const due = Number(loan.outstandingBalance);
+        if (due <= 0.001) continue;
+
+        const thisAmount = Math.min(remaining, due);
+        const previousBalance = due;
+        const newBalance = Math.max(0, due - thisAmount);
+
+        const paymentNumber = await nextSequence('paymentNumber', 'PAY', session);
+        const [payment] = await Payment.create(
+          [
+            {
+              paymentNumber,
+              amount: thisAmount,
+              method,
+              reference,
+              type: 'LOAN_REPAYMENT',
+              sale: loan.sale,
+              loan: loan._id,
+              customer: customer._id,
+              customerName: customer.name,
+              receivedBy: user._id,
+              notes
+            }
+          ],
+          { session }
+        );
+
+        loan.amountPaid += thisAmount;
+        loan.outstandingBalance = newBalance;
+        loan.status = newBalance <= 0.001 ? 'PAID' : 'PARTIALLY_PAID';
+        await loan.save({ session });
+
+        const sale = await Sale.findById(loan.sale).session(session);
+        if (sale && sale.status === 'COMPLETED') {
+          sale.amountPaid += thisAmount;
+          sale.balance = Math.max(0, sale.balance - thisAmount);
+          sale.paymentStatus = computeStatus(sale.total, sale.amountPaid);
+          await sale.save({ session });
+        }
+
+        if (loan.order) {
+          const Order = require('../models/Order');
+          const order = await Order.findById(loan.order).session(session);
+          if (order) {
+            order.amountPaid += thisAmount;
+            order.balance = Math.max(0, order.balance - thisAmount);
+            if (order.balance <= 0.001 && order.status !== 'COMPLETED' && order.status !== 'CANCELLED' && !order.sale) {
+              const { finalizeOrder } = require('./orderService');
+              await finalizeOrder({ order, session, user, customerAccountingDone: true });
+            } else if (order.status === 'PENDING' || order.status === 'CONFIRMED') {
+              order.status = 'PARTIALLY_PAID';
+              await order.save({ session });
+            } else if (order.balance <= 0.001) {
+              order.status = 'PAID';
+              await order.save({ session });
+            }
+          }
+        }
+
+        await notify({
+          type: 'LOAN_REPAYMENT',
+          title: 'Loan Repayment Received',
+          message: `${customer.name} repaid ${thisAmount.toLocaleString()} RWF on ${loan.loanNumber}. Remaining: ${newBalance.toLocaleString()} RWF.`,
+          link: `/loans/${loan._id}`,
+          meta: { loanId: loan._id },
+          session
+        });
+
+        await logAction({
+          user,
+          action: ACTIONS.LOAN_REPAYMENT,
+          entity: 'Loan',
+          entityId: loan._id,
+          description: `Repayment ${paymentNumber}: ${thisAmount} RWF from ${customer.name} on ${loan.loanNumber}. Balance ${previousBalance} -> ${newBalance}.`,
+          details: { paymentNumber, amount: thisAmount, method, previousBalance, newBalance },
+          session
+        });
+
+        applied += thisAmount;
+        remaining -= thisAmount;
+        payments.push(payment);
+        touchedLoans.push(loan);
+      }
+
+      if (applied <= 0) throw new ApiError(400, 'This customer has no outstanding loan balance to repay.');
+
+      customer.totalPaid += applied;
+      customer.outstandingBalance = Math.max(0, customer.outstandingBalance - applied);
+      await customer.save({ session });
+
+      result = {
+        appliedAmount: applied,
+        payments,
+        loans: touchedLoans,
+        customerOutstanding: customer.outstandingBalance
+      };
+    });
+    return result;
+  } finally {
+    session.endSession();
+  }
+};
+
 /** Fully removes a sale document (no soft-delete) inside the caller's transaction.
  *  - Restores stock unless the sale is cancelled or an on-demand sale.
  *  - Deletes the sale's payments, linked loans and their repayments.
@@ -556,4 +688,4 @@ const deleteSale = async ({ saleId, user }) => {
   }
 };
 
-module.exports = { createSale, cancelSale, repayLoan, deleteSale, removeSaleRecord };
+module.exports = { createSale, cancelSale, repayLoan, repayCustomerLoans, deleteSale, removeSaleRecord };
