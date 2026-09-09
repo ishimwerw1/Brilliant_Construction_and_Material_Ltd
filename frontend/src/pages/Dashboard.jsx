@@ -9,7 +9,6 @@ import { Line, Doughnut } from 'react-chartjs-2'
 import api from '../api/client'
 import StatCard from '../components/common/StatCard'
 import StatusBadge from '../components/common/StatusBadge'
-import Loading from '../components/common/Loading'
 import { useLanguage } from '../context/LanguageContext'
 import { useAuth } from '../context/AuthContext'
 
@@ -220,6 +219,65 @@ export default function Dashboard() {
           <StatCard icon="bi-cash-coin" label="Supplier Debt" value={`${(c.supplierDebt ?? 0).toLocaleString()} RWF`} color="danger" sub={`${c.supplierDebtCount ?? 0} open`} link={hasPermission('supplierDebts.read') ? '/supplier-debts' : undefined} />
         </Col>
       </Row>
+
+      {/* Profit by Source */}
+      {data.monthProfitBySource?.length > 0 && (
+        <Card className="mb-2 mb-md-3 border-0 shadow-sm">
+          <Card.Body className="p-3 p-md-4">
+            <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+              <h6 className="fw-semibold mb-0" style={{ color: '#0d3b66' }}>
+                <i className="bi bi-diagram-3 me-2" />Profit by Source — This Month
+              </h6>
+              <div className="d-flex align-items-center gap-2">
+                <span className="small text-muted">Gross Profit</span>
+                <strong className="fs-6" style={{ color: '#1e7e46' }}>{(c.monthGrossProfit ?? 0).toLocaleString()} RWF</strong>
+                <span className="badge-soft-info small px-2 py-1 rounded" style={{ fontSize: '0.7rem' }}>{c.monthSalesCount} sales</span>
+              </div>
+            </div>
+            <div className="table-responsive">
+              <Table size="sm" hover className="mb-0 align-middle">
+                <thead>
+                  <tr>
+                    <th>Revenue Source</th>
+                    <th className="text-end">Sales</th>
+                    <th className="text-end">Revenue</th>
+                    <th className="text-end">Cost</th>
+                    <th className="text-end">Profit</th>
+                    <th>Share of Profit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.monthProfitBySource.map((row) => {
+                    const label = row._id === 'NORMAL' ? 'Walk-in Sales' : row._id === 'ORDER' ? 'Order Sales' : row._id === 'ON_DEMAND' ? 'On-Demand Sales' : `${row._id} Sales`
+                    const totalProfit = data.monthProfitBySource.reduce((a, r) => a + (r.profit || 0), 0)
+                    const share = totalProfit > 0 ? ((row.profit || 0) / totalProfit) * 100 : 0
+                    return (
+                      <tr key={String(row._id)}>
+                        <td className="small fw-semibold"><i className={`bi ${row._id === 'ON_DEMAND' ? 'bi-shuffle' : row._id === 'ORDER' ? 'bi-clipboard-check' : 'bi-cart'} me-2 text-primary`} />{label}</td>
+                        <td className="text-end small">{row.count}</td>
+                        <td className="text-end small">{row.revenue.toLocaleString()}</td>
+                        <td className="text-end small text-warning">{row.cost.toLocaleString()}</td>
+                        <td className={`text-end fw-semibold ${(row.profit || 0) >= 0 ? 'text-success' : 'text-danger'}`}>{row.profit.toLocaleString()}</td>
+                        <td style={{ width: '22%' }}>
+                          <div className="d-flex align-items-center gap-2">
+                            <div className="progress flex-grow-1" style={{ height: 6, background: '#eef1f6' }}>
+                              <div className="progress-bar" style={{ width: `${Math.max(0, Math.min(100, share))}%`, background: (row.profit || 0) >= 0 ? '#1e7e46' : '#c0392b' }} />
+                            </div>
+                            <small className="text-muted" style={{ width: 42, textAlign: 'right' }}>{share.toFixed(1)}%</small>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </Table>
+            </div>
+            <div className="small text-muted mt-2">
+              <i className="bi bi-info-circle me-1" />Includes all revenue sources: walk-in sales, customer orders and on-demand sales. Cost and profit use the sale-time snapshots.
+            </div>
+          </Card.Body>
+        </Card>
+      )}
 
       {/* Today's Activity Row */}
       <h6 className="fw-semibold mb-2 mt-1" style={{ color: '#0d3b66' }}><i className="bi bi-calendar-event-fill me-2" />Today's Activity</h6>

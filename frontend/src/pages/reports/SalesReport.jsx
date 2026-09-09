@@ -327,6 +327,83 @@ export default function SalesReport() {
           )}
         </Card.Body>
       </Card>
+
+      {/* Profit Summary by Source */}
+      <Card style={{ border: 'none', boxShadow: '0 1px 8px rgba(0,0,0,.08)', borderRadius: 12 }}>
+        <Card.Body className="py-3">
+          <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+            <h6 className="fw-semibold mb-0" style={{ color: '#0d3b66', fontSize: '0.85rem' }}>
+              <i className="bi bi-diagram-3 me-1" />Profit Summary by Source
+            </h6>
+            <small className="text-muted">Where this period's profit came from — all revenue sources</small>
+          </div>
+
+          {data.bySaleType.length === 0 ? (
+            <div className="text-center text-muted py-4 small">No profit data for this period.</div>
+          ) : (
+            <div className="table-responsive">
+              <Table size="sm" hover className="mb-0 align-middle">
+                <thead>
+                  <tr>
+                    <th>Revenue Source</th>
+                    <th className="text-end">Sales</th>
+                    <th className="text-end">Revenue</th>
+                    <th className="text-end">Cost (COGS)</th>
+                    <th className="text-end">Profit</th>
+                    <th className="text-end">Margin</th>
+                    <th className="text-end">Received</th>
+                    <th className="text-end">Outstanding</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.bySaleType.map((row) => {
+                    const label = row._id === 'NORMAL' ? 'Walk-in Sales' : row._id === 'ORDER' ? 'Orders' : row._id === 'ON_DEMAND' ? 'On-Demand Sales' : String(row._id)
+                    const margin = row.revenue > 0 ? (row.profit / row.revenue) * 100 : 0
+                    return (
+                      <tr key={String(row._id)}>
+                        <td className="fw-semibold small">
+                          <i className={`bi ${row._id === 'ON_DEMAND' ? 'bi-shuffle' : row._id === 'ORDER' ? 'bi-clipboard-check' : 'bi-cart'} me-2 text-primary`} />
+                          {label}
+                          {row._id === 'ON_DEMAND' && <Badge bg="" className="badge-soft-info ms-2" style={{ fontSize: '0.6rem' }}>direct supplier purchase</Badge>}
+                        </td>
+                        <td className="text-end small">{row.count}</td>
+                        <td className="text-end small">{formatMoney(row.revenue)}</td>
+                        <td className="text-end small text-warning">{formatMoney(row.cost || 0)}</td>
+                        <td className={`text-end fw-semibold ${(row.profit || 0) >= 0 ? 'text-success' : 'text-danger'}`}>{formatMoney(row.profit || 0)}</td>
+                        <td className={`text-end small ${margin >= 0 ? 'text-success' : 'text-danger'}`}>{margin.toFixed(1)}%</td>
+                        <td className="text-end small">{formatMoney(row.received || 0)}</td>
+                        <td className={`text-end small ${(row.outstanding || 0) > 0 ? 'text-danger' : 'text-muted'}`}>{formatMoney(row.outstanding || 0)}</td>
+                      </tr>
+                    )
+                  })}
+                  <tr className="table-light fw-bold" style={{ color: '#0d3b66' }}>
+                    <td>All Sources</td>
+                    <td className="text-end">{data.bySaleType.reduce((a, r) => a + r.count, 0)}</td>
+                    <td className="text-end">{formatMoney(data.bySaleType.reduce((a, r) => a + (r.revenue || 0), 0))}</td>
+                    <td className="text-end">{formatMoney(data.bySaleType.reduce((a, r) => a + (r.cost || 0), 0))}</td>
+                    <td className="text-end">{formatMoney(data.bySaleType.reduce((a, r) => a + (r.profit || 0), 0))}</td>
+                    <td className="text-end">
+                      {(() => {
+                        const rev = data.bySaleType.reduce((a, r) => a + (r.revenue || 0), 0)
+                        const prof = data.bySaleType.reduce((a, r) => a + (r.profit || 0), 0)
+                        return rev > 0 ? `${((prof / rev) * 100).toFixed(1)}%` : '0.0%'
+                      })()}
+                    </td>
+                    <td className="text-end">{formatMoney(data.bySaleType.reduce((a, r) => a + (r.received || 0), 0))}</td>
+                    <td className="text-end">{formatMoney(data.bySaleType.reduce((a, r) => a + (r.outstanding || 0), 0))}</td>
+                  </tr>
+                </tbody>
+              </Table>
+            </div>
+          )}
+
+          <div className="small text-muted mt-2">
+            <i className="bi bi-info-circle me-1" />
+            Walk-in sales = counter/POS sales · Orders = confirmed customer orders billed · On-Demand = goods bought from a
+            supplier directly for a specific customer. Together these cover every sale recorded in the system.
+          </div>
+        </Card.Body>
+      </Card>
     </div>
   )
 }

@@ -141,6 +141,23 @@ exports.overview = wrapAsync(async (req, res) => {
     { $match: { createdAt: { $gte: monthStart } } },
     { $group: { _id: null, count: { $sum: 1 }, total: { $sum: '$totalAmount' }, paid: { $sum: '$amountPaid' }, remaining: { $sum: '$remainingAmount' } } }
   ]);
+
+  // Profit by revenue source for the current month (covers all sale types:
+  // walk-in sales, orders and on-demand — every completed Sale carries a type).
+  const monthProfitBySource = await Sale.aggregate([
+    { $match: { createdAt: { $gte: monthStart }, status: 'COMPLETED' } },
+    {
+      $group: {
+        _id: { $ifNull: ['$saleType', 'NORMAL'] },
+        count: { $sum: 1 },
+        revenue: { $sum: '$total' },
+        cost: { $sum: { $ifNull: ['$totalCost', 0] } },
+        profit: { $sum: { $ifNull: ['$totalProfit', 0] } },
+        received: { $sum: '$amountPaid' }
+      }
+    },
+    { $sort: { profit: -1 } }
+  ]);
   const [expensesToday] = await Expense.aggregate([
     { $match: { date: { $gte: today } } },
     { $group: { _id: null, count: { $sum: 1 }, total: { $sum: '$amount' } } }
@@ -231,6 +248,7 @@ exports.overview = wrapAsync(async (req, res) => {
       },
       todayByMethod: todayPayments[0] || { cash: 0, momo: 0, bank: 0, credit: 0 },
       salesTrend: trend,
+      monthProfitBySource,
       recentTransactions,
       recentSales,
       lowStockProducts,
