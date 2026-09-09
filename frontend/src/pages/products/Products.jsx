@@ -70,7 +70,7 @@ export default function Products() {
       <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <h4 className="fw-bold mb-0" style={{ color: '#0d3b66' }}>
           <i className="bi bi-box-seam me-2" />Products{' '}
-          <span className="badge rounded-pill align-middle" style={{ fontSize: '1rem', fontWeight: 700, background: '#0d3b66', color: '#ffffff', padding: '0.35rem 0.8rem' }}>
+          <span className="badge rounded-pill align-middle" style={{ fontSize: '1.35rem', fontWeight: 800, lineHeight: 1, background: '#1a6fb5', color: '#ffffff', padding: '0.45rem 1rem' }}>
             {total}
           </span>
         </h4>
