@@ -18,6 +18,12 @@ const saleItemSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const attachmentSchema = new mongoose.Schema({
+  filename: { type: String, trim: true },
+  mimeType: { type: String },
+  data: { type: String }
+}, { _id: false });
+
 const saleSchema = new mongoose.Schema(
   {
     saleNumber: { type: String, unique: true, index: true },
@@ -27,6 +33,7 @@ const saleSchema = new mongoose.Schema(
       type: [saleItemSchema],
       validate: v => Array.isArray(v) && v.length > 0
     },
+    attachment: { type: attachmentSchema },
     subtotal: { type: Number, required: true, min: 0 },
     discount: { type: Number, default: 0, min: 0 },
     total: { type: Number, required: true, min: 0 },

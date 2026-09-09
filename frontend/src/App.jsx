@@ -42,6 +42,7 @@ import ReportsPurchases from './pages/reports/PurchaseReport'
 import ReportsOnDemand from './pages/reports/OnDemandReport'
 import ReportsUserPerformance from './pages/reports/UserPerformanceReport'
 import ReportsProfitLoss from './pages/reports/ProfitLossReport'
+import ReportsPurchaseVsSales from './pages/reports/PurchaseVsSalesReport'
 
 import Users from './pages/admin/Users'
 import AuditLogs from './pages/admin/AuditLogs'
@@ -103,6 +104,7 @@ export default function App() {
               <Route path="/reports/on-demand" element={<Protected permission="reports.read"><ReportsOnDemand /></Protected>} />
               <Route path="/reports/user-performance" element={<Protected permission="reports.read"><ReportsUserPerformance /></Protected>} />
               <Route path="/reports/profit-loss" element={<Protected permission="reports.read"><ReportsProfitLoss /></Protected>} />
+              <Route path="/reports/purchase-vs-sales" element={<Protected permission="reports.read"><ReportsPurchaseVsSales /></Protected>} />
 
               <Route path="/users" element={<Protected permission="users.read"><Users /></Protected>} />
               <Route path="/audit-logs" element={<Protected permission="auditLogs.read"><AuditLogs /></Protected>} />

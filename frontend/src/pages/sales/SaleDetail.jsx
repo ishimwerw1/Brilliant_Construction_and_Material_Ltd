@@ -17,6 +17,12 @@ export default function SaleDetail() {
   const [cancelReason, setCancelReason] = useState('')
   const [error, setError] = useState('')
   const [cancelling, setCancelling] = useState(false)
+  const [attachOpen, setAttachOpen] = useState(false)
+  const [attachFile, setAttachFile] = useState(null)
+  const [attaching, setAttaching] = useState(false)
+  const [attachError, setAttachError] = useState('')
+
+  const canAttach = hasPermission('sales.create') || hasPermission('sales.cancel')
 
   const load = () => {
     api.get(`/sales/${id}`).then((r) => {
@@ -44,6 +50,25 @@ export default function SaleDetail() {
       setError(err?.response?.data?.message || 'Failed to cancel sale')
     } finally {
       setCancelling(false)
+    }
+  }
+
+  const doAttach = async (ev) => {
+    ev.preventDefault()
+    if (!attachFile) return
+    setAttaching(true)
+    setAttachError('')
+    try {
+      const fd = new FormData()
+      fd.append('attachment', attachFile)
+      await api.patch(`/sales/${sale._id}/attachment`, fd)
+      setAttachOpen(false)
+      setAttachFile(null)
+      load()
+    } catch (err) {
+      setAttachError(err?.response?.data?.message || 'Failed to attach receipt')
+    } finally {
+      setAttaching(false)
     }
   }
 
@@ -178,6 +203,62 @@ export default function SaleDetail() {
         <div className="border-top pt-3 text-center text-muted small">
           {company.invoiceFooterNote}
         </div>
+      </Card>
+
+      {/* Customer receipt document */}
+      <Card className="shadow-sm mt-3 no-print">
+        <Card.Body className="d-flex flex-wrap justify-content-between align-items-center gap-2 py-2">
+          <div className="d-flex align-items-center gap-2">
+            <i className="bi bi-paperclip text-muted fs-5" />
+            <div>
+              <div className="fw-semibold small mb-0">Customer Receipt Document</div>
+              <small className="text-muted">Signed delivery note, MO-MO screenshot or paid copy of the customer's invoice.</small>
+            </div>
+          </div>
+          <div className="d-flex align-items-center gap-2">
+            {sale.attachment ? (
+              <>
+                <a
+                  href={sale.attachment.data}
+                  target="_blank"
+                  rel="noreferrer"
+                  download={sale.attachment.filename}
+                  className="btn btn-sm btn-outline-primary"
+                >
+                  <i className="bi bi-eye me-1" />View: {sale.attachment.filename}
+                </a>
+                {canAttach && <Button size="sm" variant="light" className="border" onClick={() => { setAttachError(''); setAttachFile(null); setAttachOpen(!attachOpen) }}><i className="bi bi-arrow-repeat me-1" />Replace</Button>}
+              </>
+            ) : (
+              canAttach && (
+                <Button size="sm" variant="outline-primary" onClick={() => { setAttachError(''); setAttachFile(null); setAttachOpen(!attachOpen) }}>
+                  <i className="bi bi-upload me-1" />Attach Receipt
+                </Button>
+              )
+            )}
+          </div>
+        </Card.Body>
+        {attachOpen && canAttach && (
+          <Card.Body className="border-top pt-3">
+            <Form onSubmit={doAttach}>
+              <div className="d-flex flex-wrap gap-2 align-items-center">
+                <Form.Control
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={(e) => setAttachFile(e.target.files?.[0] || null)}
+                  style={{ maxWidth: 320 }}
+                  required
+                />
+                <Button type="submit" size="sm" variant="primary" disabled={attaching || !attachFile}>
+                  {attaching ? <><span className="spinner-border spinner-border-sm me-1" />Uploading...</> : 'Save'}
+                </Button>
+                <Button type="button" size="sm" variant="light" className="border" onClick={() => setAttachOpen(false)}>Cancel</Button>
+              </div>
+              {attachError && <div className="text-danger small mt-2">{attachError}</div>}
+              <Form.Text className="text-muted small d-block mt-2">Image or PDF, max 1.5MB.</Form.Text>
+            </Form>
+          </Card.Body>
+        )}
       </Card>
 
       <ConfirmDialog

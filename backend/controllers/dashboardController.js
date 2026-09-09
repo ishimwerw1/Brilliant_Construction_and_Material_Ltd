@@ -137,6 +137,10 @@ exports.overview = wrapAsync(async (req, res) => {
     { $match: { createdAt: { $gte: today } } },
     { $group: { _id: null, count: { $sum: 1 }, total: { $sum: '$totalAmount' } } }
   ]);
+  const [monthPurchasesAgg] = await Purchase.aggregate([
+    { $match: { createdAt: { $gte: monthStart } } },
+    { $group: { _id: null, count: { $sum: 1 }, total: { $sum: '$totalAmount' }, paid: { $sum: '$amountPaid' }, remaining: { $sum: '$remainingAmount' } } }
+  ]);
   const [expensesToday] = await Expense.aggregate([
     { $match: { date: { $gte: today } } },
     { $group: { _id: null, count: { $sum: 1 }, total: { $sum: '$amount' } } }
@@ -206,6 +210,10 @@ exports.overview = wrapAsync(async (req, res) => {
         monthNetProfit: monthGrossProfit - monthExpensesTotal,
         totalPurchases: purchasesAgg[0]?.total || 0,
         purchasesToday: purchasesAgg[0]?.count || 0,
+        monthPurchasesTotal: monthPurchasesAgg?.total || 0,
+        monthPurchasesCount: monthPurchasesAgg?.count || 0,
+        monthPurchasesPaid: monthPurchasesAgg?.paid || 0,
+        monthPurchasesRemaining: monthPurchasesAgg?.remaining || 0,
         expensesToday: expensesToday?.total || 0,
         expenseCountToday: expensesToday?.count || 0,
         supplierDebt: debtAgg?.total || 0,

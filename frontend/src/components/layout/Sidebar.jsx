@@ -92,6 +92,7 @@ export default function Sidebar({ open, onClose }) {
             <Item to="/reports/loans" icon="bi-credit-card-2-front" labelKey="loanReports" />
             <Item to="/reports/financial" icon="bi-bank" labelKey="financialReports" />
             <Item to="/reports/profit-loss" icon="bi-bar-chart-line" labelKey="profitLoss" />
+            <Item to="/reports/purchase-vs-sales" icon="bi-arrow-left-right" label="Purchase vs Sales" />
             <Item to="/reports/expenses" icon="bi-receipt-cutoff" labelKey="expenseReports" />
             <Item to="/reports/purchases" icon="bi-cart4" labelKey="purchaseReports" />
             <Item to="/reports/on-demand" icon="bi-shuffle" labelKey="onDemand" />

@@ -41,11 +41,27 @@ exports.getOne = wrapAsync(async (req, res) => {
   res.json({ success: true, data: { purchase } });
 });
 
+const MAX_ATTACHMENT_BYTES = 1_500_000;
+
+const buildAttachment = (file) => {
+  if (!file) return undefined;
+  if (file.size > MAX_ATTACHMENT_BYTES) {
+    throw new ApiError(400, 'Attachment file must be smaller than 1.5MB.');
+  }
+  return {
+    filename: file.originalname,
+    mimeType: file.mimetype,
+    data: `data:${file.mimetype};base64,${file.buffer.toString('base64')}`
+  };
+};
+
 exports.create = wrapAsync(async (req, res) => {
-  const { supplier, supplierName, items, paymentMethod, amountPaid, dueDate, notes } = req.body;
+  const { supplier, supplierName, paymentMethod, amountPaid, dueDate, notes, purchaseDate, supplierInvoiceNumber } = req.body;
+  const items = typeof req.body.items === 'string' ? JSON.parse(req.body.items) : req.body.items;
   if (!supplier) throw new ApiError(400, 'Supplier is required.');
   if (!items?.length) throw new ApiError(400, 'At least one item is required.');
   if (!paymentMethod) throw new ApiError(400, 'Payment method is required.');
+  const attachment = buildAttachment(req.file);
 
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -88,6 +104,9 @@ exports.create = wrapAsync(async (req, res) => {
       supplier,
       supplierName: supplierName || '',
       items: purchaseItems,
+      purchaseDate: purchaseDate || undefined,
+      supplierInvoiceNumber: (supplierInvoiceNumber || '').trim(),
+      attachment,
       totalAmount,
       paymentMethod,
       paymentStatus,
@@ -140,9 +159,11 @@ exports.update = wrapAsync(async (req, res) => {
   const purchase = await Purchase.findById(req.params.id);
   if (!purchase) throw new ApiError(404, 'Purchase not found.');
 
-  const { notes, dueDate } = req.body;
+  const { notes, dueDate, supplierInvoiceNumber, purchaseDate } = req.body;
   if (notes !== undefined) purchase.notes = notes?.trim() || '';
   if (dueDate !== undefined) purchase.dueDate = dueDate || undefined;
+  if (supplierInvoiceNumber !== undefined) purchase.supplierInvoiceNumber = (supplierInvoiceNumber || '').trim();
+  if (purchaseDate !== undefined) purchase.purchaseDate = purchaseDate || undefined;
 
   await purchase.save();
 
@@ -160,6 +181,31 @@ exports.update = wrapAsync(async (req, res) => {
     .populate('createdBy', 'fullName');
 
   res.json({ success: true, message: 'Purchase updated successfully.', data: { purchase: populated } });
+});
+
+exports.attach = wrapAsync(async (req, res) => {
+  const purchase = await Purchase.findById(req.params.id);
+  if (!purchase) throw new ApiError(404, 'Purchase not found.');
+
+  purchase.attachment = buildAttachment(req.file) || undefined;
+  if (!purchase.attachment) throw new ApiError(400, 'A receipt/invoice document is required.');
+
+  await purchase.save();
+
+  await logAction({
+    user: req.user,
+    action: ACTIONS.PURCHASE_UPDATE,
+    entity: 'Purchase',
+    entityId: purchase._id,
+    description: `Attached document to purchase ${purchase.purchaseNumber} (${purchase.attachment.filename})`
+  });
+
+  const populated = await Purchase.findById(purchase._id)
+    .populate('supplier', 'name phone')
+    .populate('items.product', 'name sku')
+    .populate('createdBy', 'fullName');
+
+  res.json({ success: true, message: 'Document attached successfully.', data: { purchase: populated } });
 });
 
 exports.remove = wrapAsync(async (req, res) => {

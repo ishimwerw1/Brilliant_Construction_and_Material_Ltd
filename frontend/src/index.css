@@ -183,8 +183,18 @@ body {
   body * { visibility: hidden; }
   .invoice-sheet, .invoice-sheet * { visibility: visible; }
   .invoice-sheet { position: absolute; left: 0; top: 0; width: 100%; padding: 1rem; }
+  .pbs-sheet, .pbs-sheet * { visibility: visible; }
+  .pbs-sheet { position: absolute; left: 0; top: 0; width: 100%; padding: 1rem; }
+  .pbs-print-header { display: block !important; }
   .no-print { display: none !important; }
+  @page { size: A4; margin: 12mm; }
 }
+
+/* Purchase vs Sales print header (hidden on screen) */
+.pbs-print-header { display: none; }
+.pbs-print-company { font-size: 1.1rem; font-weight: 800; letter-spacing: .02em; color: #0d3b66; border-bottom: 2px solid #0d3b66; padding-bottom: 6px; margin-bottom: 2px; }
+.pbs-print-title { font-size: 1rem; font-weight: 700; color: #1a6fb5; margin-top: 6px; }
+.pbs-print-meta { font-size: 0.78rem; color: #4a5a6e; margin-top: 2px; }
 
 .text-truncate-2 {
   display: -webkit-box;

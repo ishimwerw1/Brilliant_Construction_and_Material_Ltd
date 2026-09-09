@@ -8,17 +8,26 @@ const purchaseItemSchema = new mongoose.Schema({
   subtotal: { type: Number, required: true }
 }, { _id: false });
 
+const attachmentSchema = new mongoose.Schema({
+  filename: { type: String, trim: true },
+  mimeType: { type: String },
+  data: { type: String }
+}, { _id: false });
+
 const purchaseSchema = new mongoose.Schema({
   purchaseNumber: { type: String, unique: true, index: true },
   supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier', required: true },
   supplierName: { type: String },
   items: { type: [purchaseItemSchema], required: true, validate: [v => v.length > 0, 'At least one item is required'] },
+  purchaseDate: { type: Date },
+  supplierInvoiceNumber: { type: String, trim: true, default: '' },
   totalAmount: { type: Number, required: true, min: 0 },
   paymentMethod: { type: String, required: true, enum: ['CASH', 'MOMO', 'BANK'] },
   paymentStatus: { type: String, required: true, enum: ['PAID', 'PARTIALLY_PAID', 'UNPAID'], default: 'UNPAID' },
   amountPaid: { type: Number, default: 0, min: 0 },
   remainingAmount: { type: Number, default: 0, min: 0 },
   dueDate: { type: Date },
+  attachment: { type: attachmentSchema },
   onDemand: { type: mongoose.Schema.Types.ObjectId, ref: 'OnDemand' },
   onDemandNumber: { type: String },
   notes: { type: String, trim: true, default: '' },

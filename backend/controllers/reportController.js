@@ -10,7 +10,11 @@ const Purchase = require('../models/Purchase');
 const SupplierPayment = require('../models/SupplierPayment');
 const User = require('../models/User');
 const Order = require('../models/Order');
+const mongoose = require('mongoose');
+const { buildFifoAnalysis } = require('../services/fifoCostingService');
 const { wrapAsync } = require('../middleware/errorHandler');
+
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 const dateRange = (q) => {
   const range = {};
@@ -458,6 +462,219 @@ exports.onDemandReport = wrapAsync(async (req, res) => {
     data: {
       summary: summary || { count: 0, revenue: 0, cost: 0, profit: 0, received: 0, customerOutstanding: 0, supplierBalance: 0 },
       bySupplier
+    }
+  });
+});
+
+/**
+ * GET /api/reports/purchase-vs-sales
+ * Purchase vs Sales Analysis with true inventory costing.
+ *
+ * - Sales side: completed sales (revenue = sum of item subtotals, optional type/customer filter).
+ * - Purchase side: purchase invoices/receipts (cost = sum of item subtotals, optional supplier filter).
+ * - COGS: FIFO engine replays stock movements, so a product bought at multiple prices is
+ *   costed from the oldest purchase batch first; unsold stock stays in inventory (never COGS).
+ * - On-demand sales that never enter our own stock are costed from their actual supplier-purchase
+ *   snapshot instead (profitable only on the real difference; supplier payments never inflate profit).
+ */
+exports.purchaseVsSalesReport = wrapAsync(async (req, res) => {
+  const range = dateRange(req.query);
+  const { product, supplier, customer, type, search } = req.query;
+
+  const rangeMatch = range ? { createdAt: range } : null;
+
+  const saleFilter = { status: 'COMPLETED', ...(rangeMatch || {}) };
+  if (customer) saleFilter.customer = customer;
+  if (type && type !== 'ALL') saleFilter.saleType = type;
+
+  const purchaseFilter = { ...(rangeMatch || {}) };
+  if (supplier) purchaseFilter.supplier = supplier;
+  if (type && type !== 'ALL') {
+    purchaseFilter.onDemand = type === 'ON_DEMAND' ? { $ne: null } : null;
+  }
+
+  const s = search?.trim() ? new RegExp(search.trim(), 'i') : null;
+  const productOid = product && mongoose.Types.ObjectId.isValid(product) ? new mongoose.Types.ObjectId(product) : null;
+
+  // Revenue side: what was sold in the period, per product.
+  const salesByProduct = await Sale.aggregate([
+    { $match: saleFilter },
+    { $unwind: '$items' },
+    ...(productOid ? [{ $match: { 'items.product': productOid } }] : []),
+    ...(s ? [{ $match: { $or: [{ 'items.productName': s }, { 'items.sku': s }] } }] : []),
+    {
+      $group: {
+        _id: '$items.product',
+        name: { $first: '$items.productName' },
+        sku: { $first: '$items.sku' },
+        qtySold: { $sum: '$items.quantity' },
+        revenue: { $sum: '$items.subtotal' },
+        onDemandCogs: {
+          $sum: { $cond: [{ $eq: ['$saleType', 'ON_DEMAND'] }, { $ifNull: ['$items.totalCost', 0] }, 0] }
+        },
+        soldCount: { $sum: 1 }
+      }
+    }
+  ]);
+
+  // Cost-in side: what was purchased (invoices/receipts) in the period, per product.
+  const purchasesByProduct = await Purchase.aggregate([
+    { $match: purchaseFilter },
+    { $unwind: '$items' },
+    ...(productOid ? [{ $match: { 'items.product': productOid } }] : []),
+    ...(s ? [{ $match: { 'items.productName': s } }] : []),
+    {
+      $group: {
+        _id: '$items.product',
+        name: { $first: '$items.productName' },
+        qtyPurchased: { $sum: '$items.quantity' },
+        costPurchased: { $sum: '$items.subtotal' },
+        purchaseCount: { $sum: 1 }
+      }
+    }
+  ]);
+
+  // FIFO cost of the goods actually sold in the period (exact batch costing).
+  const productIds = [...new Set([
+    ...salesByProduct.map((r) => r._id),
+    ...purchasesByProduct.map((r) => r._id)
+  ].filter(Boolean))];
+
+  const fifo = await buildFifoAnalysis({
+    from: range?.$gte,
+    to: range?.$lte,
+    productIds,
+    saleTypes: type && type !== 'ALL' ? [type] : []
+  });
+  const fifoByProduct = new Map(fifo.products.map((p) => [String(p.productId), p]));
+
+  // Merge into product rows.
+  const rowMap = new Map();
+  for (const p of purchasesByProduct) {
+    rowMap.set(String(p._id), {
+      productId: p._id,
+      name: p.name,
+      sku: p.sku || '',
+      unit: '',
+      qtyPurchased: round2(p.qtyPurchased),
+      costPurchased: round2(p.costPurchased),
+      purchaseCount: p.purchaseCount,
+      qtySold: 0,
+      revenue: 0,
+      soldCount: 0,
+      onDemandCogs: 0,
+      fifoCogs: 0,
+      cogs: 0,
+      profit: 0,
+      marginPct: 0,
+      remainingQty: 0,
+      remainingCost: 0,
+      batchesConsumed: 0,
+      unmatchedSoldQty: 0
+    });
+  }
+  for (const p of salesByProduct) {
+    const key = String(p._id);
+    const existing = rowMap.get(key);
+    const row = existing || {
+      productId: p._id,
+      name: p.name,
+      sku: p.sku || '',
+      unit: '',
+      qtyPurchased: 0,
+      costPurchased: 0,
+      purchaseCount: 0,
+      remainingQty: 0,
+      remainingCost: 0,
+      batchesConsumed: 0,
+      unmatchedSoldQty: 0
+    };
+    row.unit = row.unit || '';
+    row.qtySold = round2(p.qtySold);
+    row.revenue = round2(p.revenue);
+    row.soldCount = p.soldCount;
+    row.onDemandCogs = round2(p.onDemandCogs || 0);
+    rowMap.set(key, row);
+  }
+
+  const products = [];
+  const totals = {
+    totalPurchases: 0, purchaseQty: 0, purchaseCount: 0,
+    totalRevenue: 0, soldQty: 0, soldCount: 0,
+    fifoCogs: 0, onDemandCogs: 0, cogs: 0, grossProfit: 0, marginPct: 0,
+    inventoryValue: 0, remainingUnits: 0, unmatchedSoldUnits: 0
+  };
+
+  for (const row of rowMap.values()) {
+    const f = fifoByProduct.get(String(row.productId));
+    if (f) {
+      row.unit = f.unit;
+      row.fifoCogs = round2(f.soldCost);
+      row.remainingQty = round2(f.remainingQty);
+      row.remainingCost = round2(f.remainingCost);
+      row.batchesConsumed = f.batchesConsumed;
+      row.unmatchedSoldQty = round2(f.unmatchedSoldQty);
+    }
+    row.cogs = round2(row.fifoCogs + (row.onDemandCogs || 0));
+    row.profit = round2(row.revenue - row.cogs);
+    row.marginPct = row.revenue > 0 ? round2((row.profit / row.revenue) * 100) : 0;
+    products.push(row);
+
+    totals.totalPurchases += row.costPurchased || 0;
+    totals.purchaseQty += row.qtyPurchased || 0;
+    totals.purchaseCount += row.purchaseCount || 0;
+    totals.totalRevenue += row.revenue || 0;
+    totals.soldQty += row.qtySold || 0;
+    totals.soldCount += row.soldCount || 0;
+    totals.fifoCogs += row.fifoCogs || 0;
+    totals.onDemandCogs += row.onDemandCogs || 0;
+    totals.inventoryValue += row.remainingCost || 0;
+    totals.remainingUnits += row.remainingQty || 0;
+    totals.unmatchedSoldUnits += row.unmatchedSoldQty || 0;
+  }
+
+  totals.totalPurchases = round2(totals.totalPurchases);
+  totals.purchaseQty = round2(totals.purchaseQty);
+  totals.totalRevenue = round2(totals.totalRevenue);
+  totals.soldQty = round2(totals.soldQty);
+  totals.fifoCogs = round2(totals.fifoCogs);
+  totals.onDemandCogs = round2(totals.onDemandCogs);
+  totals.cogs = round2(totals.fifoCogs + totals.onDemandCogs);
+  totals.grossProfit = round2(totals.totalRevenue - totals.cogs);
+  totals.marginPct = totals.totalRevenue > 0 ? round2((totals.grossProfit / totals.totalRevenue) * 100) : 0;
+  totals.inventoryValue = round2(totals.inventoryValue);
+  totals.remainingUnits = round2(totals.remainingUnits);
+  totals.unmatchedSoldUnits = round2(totals.unmatchedSoldUnits);
+
+  // Sales-side breakdown by transaction type.
+  const byType = await Sale.aggregate([
+    { $match: saleFilter },
+    {
+      $group: {
+        _id: { $ifNull: ['$saleType', 'NORMAL'] },
+        count: { $sum: 1 },
+        revenue: { $sum: '$total' }
+      }
+    },
+    { $sort: { _id: 1 } }
+  ]);
+
+  products.sort((a, b) => b.profit - a.profit);
+
+  res.json({
+    success: true,
+    data: {
+      period: {
+        from: range?.$gte || null,
+        to: range?.$lte || null
+      },
+      summary: {
+        ...totals,
+        purchaseAvgCost: totals.purchaseQty > 0 ? round2(totals.totalPurchases / totals.purchaseQty) : 0,
+        saleAvgRevenue: totals.soldQty > 0 ? round2(totals.totalRevenue / totals.soldQty) : 0
+      },
+      products,
+      byType
     }
   });
 });

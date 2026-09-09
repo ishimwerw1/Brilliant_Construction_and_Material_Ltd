@@ -193,6 +193,9 @@ export default function Dashboard() {
         <Col xs={12} sm={6} xl={3}>
           <StatCard icon="bi-graph-up-arrow" label="This Month Revenue" value={`${c.monthRevenue.toLocaleString()} RWF`} color="primary" sub={`${c.monthSalesCount} sales`} />
         </Col>
+        <Col xs={12} sm={6} xl={3}>
+          <StatCard icon="bi-arrow-left-right" label="Purchase vs Sales (Month)" value={`${(c.monthPurchasesTotal ?? 0).toLocaleString()} RWF`} color="warning" sub={`${c.monthPurchasesCount ?? 0} purchases · owed ${(c.monthPurchasesRemaining ?? 0).toLocaleString()} RWF`} link={hasPermission('reports.read') ? '/reports/purchase-vs-sales' : undefined} />
+        </Col>
       </Row>
 
       {/* Financial Overview Row */}

@@ -15,7 +15,10 @@ const emptyForm = {
   paymentMethod: 'CASH',
   amountPaid: '',
   dueDate: '',
-  notes: ''
+  purchaseDate: '',
+  supplierInvoiceNumber: '',
+  notes: '',
+  attachment: null
 }
 
 export default function Purchases() {
@@ -42,6 +45,9 @@ export default function Purchases() {
   const [editing, setEditing] = useState(null)
   const [editNotes, setEditNotes] = useState('')
   const [editDueDate, setEditDueDate] = useState('')
+  const [editInvoiceNumber, setEditInvoiceNumber] = useState('')
+  const [editPurchaseDate, setEditPurchaseDate] = useState('')
+  const [editAttachment, setEditAttachment] = useState(null)
   const [editSaving, setEditSaving] = useState(false)
 
   const [confirmDel, setConfirmDel] = useState(null)
@@ -132,15 +138,31 @@ export default function Purchases() {
     setSaving(true)
     setError('')
     try {
-      const payload = {
-        supplier: form.supplier,
-        items: validItems.map((i) => ({ product: i.product, productName: i.productName, quantity: i.quantity, costPrice: i.costPrice })),
-        paymentMethod: form.paymentMethod,
-        amountPaid: Number(form.amountPaid || 0),
-        dueDate: form.dueDate || undefined,
-        notes: form.notes || undefined
+      if (form.attachment) {
+        const fd = new FormData()
+        fd.append('supplier', form.supplier)
+        fd.append('paymentMethod', form.paymentMethod)
+        fd.append('amountPaid', String(Number(form.amountPaid || 0)))
+        if (form.dueDate) fd.append('dueDate', form.dueDate)
+        if (form.purchaseDate) fd.append('purchaseDate', form.purchaseDate)
+        if (form.supplierInvoiceNumber.trim()) fd.append('supplierInvoiceNumber', form.supplierInvoiceNumber.trim())
+        if (form.notes) fd.append('notes', form.notes)
+        fd.append('items', JSON.stringify(validItems.map((i) => ({ product: i.product, productName: i.productName, quantity: i.quantity, costPrice: i.costPrice }))))
+        fd.append('attachment', form.attachment)
+        await api.post('/purchases', fd)
+      } else {
+        const payload = {
+          supplier: form.supplier,
+          items: validItems.map((i) => ({ product: i.product, productName: i.productName, quantity: i.quantity, costPrice: i.costPrice })),
+          paymentMethod: form.paymentMethod,
+          amountPaid: Number(form.amountPaid || 0),
+          dueDate: form.dueDate || undefined,
+          purchaseDate: form.purchaseDate || undefined,
+          supplierInvoiceNumber: form.supplierInvoiceNumber.trim() || undefined,
+          notes: form.notes || undefined
+        }
+        await api.post('/purchases', payload)
       }
-      await api.post('/purchases', payload)
       setShowForm(false)
       load()
     } catch (err) {
@@ -154,14 +176,29 @@ export default function Purchases() {
     setEditing(p)
     setEditNotes(p.notes || '')
     setEditDueDate(p.dueDate ? new Date(p.dueDate).toISOString().slice(0, 10) : '')
+    setEditInvoiceNumber(p.supplierInvoiceNumber || '')
+    setEditPurchaseDate(p.purchaseDate ? new Date(p.purchaseDate).toISOString().slice(0, 10) : '')
+    setEditAttachment(null)
   }
 
   const submitEdit = async () => {
     setEditSaving(true)
     setError('')
     try {
-      await api.put(`/purchases/${editing._id}`, { notes: editNotes, dueDate: editDueDate || undefined })
+      if (editAttachment) {
+        const fd = new FormData()
+        if (editInvoiceNumber.trim()) fd.append('supplierInvoiceNumber', editInvoiceNumber.trim())
+        fd.append('attachment', editAttachment)
+        await api.patch(`/purchases/${editing._id}/attachment`, fd)
+      }
+      await api.put(`/purchases/${editing._id}`, {
+        notes: editNotes,
+        dueDate: editDueDate || undefined,
+        purchaseDate: editPurchaseDate || undefined,
+        supplierInvoiceNumber: editInvoiceNumber.trim() || undefined
+      })
       setEditing(null)
+      setEditAttachment(null)
       load()
     } catch (err) {
       setError(getError(err))
@@ -323,8 +360,38 @@ export default function Purchases() {
                   <span className="text-muted">Method: </span>
                   <Badge bg="" className={`badge-soft-${detail.paymentMethod === 'CASH' ? 'success' : detail.paymentMethod === 'MOMO' ? 'info' : 'primary'}`}>{detail.paymentMethod}</Badge>
                 </Col>
-                {detail.dueDate && <Col sm={4}><span className="text-muted">Due: </span>{new Date(detail.dueDate).toLocaleDateString()}</Col>}
+                <Col sm={4}>
+                  <span className="text-muted">Due: </span>
+                  {detail.dueDate ? new Date(detail.dueDate).toLocaleDateString() : '-'}
+                </Col>
                 <Col sm={4}><span className="text-muted">By: </span>{detail.createdBy?.fullName}</Col>
+                {detail.purchaseDate && (
+                  <Col sm={4}>
+                    <span className="text-muted">Purchase Date: </span>
+                    <span className="fw-semibold">{new Date(detail.purchaseDate).toLocaleDateString()}</span>
+                  </Col>
+                )}
+                {detail.supplierInvoiceNumber && (
+                  <Col sm={4}>
+                    <span className="text-muted">Supplier Invoice #: </span>
+                    <span className="fw-semibold">{detail.supplierInvoiceNumber}</span>
+                  </Col>
+                )}
+                {detail.attachment && (
+                  <Col sm={4}>
+                    <span className="text-muted">Document: </span>
+                    <a
+                      href={detail.attachment.data}
+                      target="_blank"
+                      rel="noreferrer"
+                      download={detail.attachment.filename}
+                      className="fw-semibold text-decoration-none small"
+                    >
+                      <i className="bi bi-paperclip me-1" />
+                      {detail.attachment.filename}
+                    </a>
+                  </Col>
+                )}
               </Row>
               {detail.notes && <div className="small text-muted mt-2"><i className="bi bi-sticky me-1" />{detail.notes}</div>}
             </>
@@ -435,10 +502,44 @@ export default function Purchases() {
                   <Form.Control type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
                 </Form.Group>
               </Col>
+              <Col md={4}>
+                <Form.Group>
+                  <Form.Label>Purchase Date</Form.Label>
+                  <Form.Control
+                    type="date"
+                    value={form.purchaseDate}
+                    onChange={(e) => setForm({ ...form, purchaseDate: e.target.value })}
+                    title="Date the supplier delivered goods (defaults to today)"
+                  />
+                </Form.Group>
+              </Col>
+              <Col md={4}>
+                <Form.Group>
+                  <Form.Label>Supplier Invoice #</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={form.supplierInvoiceNumber}
+                    onChange={(e) => setForm({ ...form, supplierInvoiceNumber: e.target.value })}
+                    placeholder="e.g. SUP-1042"
+                    title="Reference number on the supplier's invoice / receipt"
+                  />
+                </Form.Group>
+              </Col>
               <Col md={8}>
                 <Form.Group>
+                  <Form.Label>Attach Receipt / Invoice (optional)</Form.Label>
+                  <Form.Control
+                    type="file"
+                    accept="image/*,.pdf"
+                    onChange={(e) => setForm({ ...form, attachment: e.target.files?.[0] || null })}
+                  />
+                  <Form.Text className="text-muted small">Image or PDF, max 1.5MB.</Form.Text>
+                </Form.Group>
+              </Col>
+              <Col md={4}>
+                <Form.Group>
                   <Form.Label>Notes</Form.Label>
-                  <Form.Control as="textarea" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Optional notes..." />
+                  <Form.Control as="textarea" rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Optional notes..." />
                 </Form.Group>
               </Col>
             </Row>
@@ -466,13 +567,41 @@ export default function Purchases() {
         </Modal.Header>
         <Modal.Body>
           {error && <Alert variant="danger" className="py-2 small">{error}</Alert>}
-          <Form.Group className="mb-3">
+          <Row className="g-3">
+            <Col md={6}>
+              <Form.Group>
+                <Form.Label>Supplier Invoice #</Form.Label>
+                <Form.Control
+                  type="text"
+                  value={editInvoiceNumber}
+                  onChange={(e) => setEditInvoiceNumber(e.target.value)}
+                  placeholder="e.g. SUP-1042"
+                />
+              </Form.Group>
+            </Col>
+            <Col md={6}>
+              <Form.Group>
+                <Form.Label>Purchase Date</Form.Label>
+                <Form.Control type="date" value={editPurchaseDate} onChange={(e) => setEditPurchaseDate(e.target.value)} />
+              </Form.Group>
+            </Col>
+          </Row>
+          <Form.Group className="mb-3 mt-3">
             <Form.Label>Notes</Form.Label>
             <Form.Control as="textarea" rows={2} value={editNotes} onChange={(e) => setEditNotes(e.target.value)} />
           </Form.Group>
           <Form.Group>
             <Form.Label>Due Date</Form.Label>
             <Form.Control type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} />
+          </Form.Group>
+          <Form.Group className="mt-3">
+            <Form.Label>Attach Receipt / Invoice {editing?.attachment ? '(current: ' + editing.attachment.filename + ')' : ''}</Form.Label>
+            <Form.Control
+              type="file"
+              accept="image/*,.pdf"
+              onChange={(e) => setEditAttachment(e.target.files?.[0] || null)}
+            />
+            <Form.Text className="text-muted small">Image or PDF, max 1.5MB. Saving replaces any existing document.</Form.Text>
           </Form.Group>
         </Modal.Body>
         <Modal.Footer>

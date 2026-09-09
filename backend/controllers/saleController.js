@@ -3,6 +3,21 @@ const Setting = require('../models/Setting');
 const { createSale, cancelSale, deleteSale } = require('../services/saleService');
 const ApiError = require('../utils/ApiError');
 const { wrapAsync } = require('../middleware/errorHandler');
+const { logAction, ACTIONS } = require('../services/auditService');
+
+const MAX_ATTACHMENT_BYTES = 1_500_000;
+
+const buildAttachment = (file) => {
+  if (!file) throw new ApiError(400, 'A receipt/document image is required.');
+  if (file.size > MAX_ATTACHMENT_BYTES) {
+    throw new ApiError(400, 'Attachment file must be smaller than 1.5MB.');
+  }
+  return {
+    filename: file.originalname,
+    mimeType: file.mimetype,
+    data: `data:${file.mimetype};base64,${file.buffer.toString('base64')}`
+  };
+};
 
 exports.list = wrapAsync(async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
@@ -56,6 +71,25 @@ exports.cancel = wrapAsync(async (req, res) => {
   if (!reason?.trim()) throw new ApiError(400, 'A cancellation reason is required.');
   const sale = await cancelSale({ saleId: req.params.id, reason: reason.trim(), user: req.user });
   res.json({ success: true, message: `Sale ${sale.saleNumber} cancelled and stock restored`, data: { sale } });
+});
+
+exports.attach = wrapAsync(async (req, res) => {
+  const sale = await Sale.findById(req.params.id);
+  if (!sale) throw new ApiError(404, 'Sale not found.');
+
+  sale.attachment = buildAttachment(req.file);
+  await sale.save();
+
+  await logAction({
+    user: req.user,
+    action: ACTIONS.SALE_UPDATE,
+    entity: 'Sale',
+    entityId: sale._id,
+    description: `Attached receipt document to sale ${sale.saleNumber} (${sale.attachment.filename})`
+  });
+
+  const populated = await Sale.findById(sale._id).populate('customer', 'name phone').populate('cashier', 'fullName');
+  res.json({ success: true, message: 'Receipt document attached successfully.', data: { sale: populated } });
 });
 
 exports.remove = wrapAsync(async (req, res) => {
