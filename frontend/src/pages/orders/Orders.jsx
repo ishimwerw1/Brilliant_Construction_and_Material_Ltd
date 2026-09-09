@@ -167,7 +167,8 @@ export default function Orders() {
         ))}
       </Row>
 
-      {error && <Alert variant="danger" dismissible onClose={() => setError('')} className="py-2 small">{error}</Alert>}
+{error && <Alert variant="danger" dismissible onClose={() => setError('')} className="py-2 small">{error}</Alert>}
+      {toast && <Alert variant={toast.type} dismissible onClose={() => setToast(null)} className="py-2 small">{toast.msg}</Alert>}
 
       <Card body>
         <DataTable
@@ -382,7 +383,6 @@ function NewOrderModal({ show, onHide, saving, setSaving, onCreated }) {
       </Modal.Header>
       <Modal.Body>
 {error && <Alert variant="danger" dismissible onClose={() => setError('')} className="py-2 small">{error}</Alert>}
-      {toast && <Alert variant={toast.type} dismissible onClose={() => setToast(null)} className="py-2 small">{toast.msg}</Alert>}
 
         <Form.Label className="small fw-semibold">1. Customer *</Form.Label>
         {customer ? (
