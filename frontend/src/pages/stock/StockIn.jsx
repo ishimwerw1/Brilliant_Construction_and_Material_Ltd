@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Card, Row, Col, Form, Button, Alert, Table, Badge } from 'react-bootstrap'
+import { Card, Row, Col, Form, Button, Alert, Table, Badge, InputGroup } from 'react-bootstrap'
 import api, { getError } from '../../api/client'
 
 export default function StockIn() {
@@ -7,6 +7,7 @@ export default function StockIn() {
   const [suppliers, setSuppliers] = useState([])
   const [supplier, setSupplier] = useState('')
   const [reference, setReference] = useState(`GRN-${Date.now().toString().slice(-6)}`)
+  const [productSearch, setProductSearch] = useState('')
   const [lines, setLines] = useState([{ product: '', quantity: '', buyingPrice: '' }])
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(null)
@@ -21,6 +22,14 @@ export default function StockIn() {
       setSuppliers(s.data.data.suppliers)
     }).catch((e) => setError(getError(e)))
   }, [])
+
+  const filteredProducts = useMemo(() => {
+    const q = productSearch.trim().toLowerCase()
+    if (!q) return products
+    return products.filter((p) =>
+      p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q) || (p.barcode || '').toLowerCase().includes(q)
+    )
+  }, [products, productSearch])
 
   const addLine = () => setLines([...lines, { product: '', quantity: '', buyingPrice: '' }])
   const removeLine = (i) => setLines(lines.filter((_, idx) => idx !== i))
@@ -55,6 +64,7 @@ export default function StockIn() {
       const { data } = await api.post('/stock/in', { supplier: supplier || undefined, items, reference })
       setSuccess(data.data)
       setLines([{ product: '', quantity: '', buyingPrice: '' }])
+      setProductSearch('')
       setReference(`GRN-${Date.now().toString().slice(-6)}`)
     } catch (err) {
       setError(getError(err))
@@ -101,6 +111,10 @@ export default function StockIn() {
 
           <Col md={7}>
             <Card body>
+              <InputGroup size="sm" className="mb-2">
+                <InputGroup.Text><i className="bi bi-search" /></InputGroup.Text>
+                <Form.Control placeholder="Search products by name, SKU or barcode..." value={productSearch} onChange={(e) => setProductSearch(e.target.value)} />
+              </InputGroup>
               <Table size="sm" className="align-middle mb-2">
                 <thead>
                   <tr><th style={{ width: '45%' }}>Product</th><th>Quantity</th><th>Buying Price</th><th></th></tr>
@@ -110,8 +124,8 @@ export default function StockIn() {
                     <tr key={i}>
                       <td>
                         <Form.Select size="sm" value={line.product} onChange={(e) => updateLine(i, 'product', e.target.value)} required>
-                          <option value="">-- Select product --</option>
-                          {products.map((p) => (
+                          <option value="">{filteredProducts.length === 0 && productSearch ? 'No products found' : '-- Select product --'}</option>
+                          {filteredProducts.map((p) => (
                             <option key={p._id} value={p._id}>{p.name} ({p.sku}) — stock: {p.quantity}</option>
                           ))}
                         </Form.Select>

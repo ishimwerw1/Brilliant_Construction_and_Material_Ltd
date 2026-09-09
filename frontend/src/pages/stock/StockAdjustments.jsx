@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
-import { Card, Row, Col, Form, Button, Alert, Table } from 'react-bootstrap'
+import { useEffect, useMemo, useState } from 'react'
+import { Card, Row, Col, Form, Button, Alert, Table, InputGroup } from 'react-bootstrap'
 import api, { getError } from '../../api/client'
 
 export default function StockAdjustments() {
   const [products, setProducts] = useState([])
   const [productId, setProductId] = useState('')
+  const [productSearch, setProductSearch] = useState('')
   const [actualQty, setActualQty] = useState('')
   const [reason, setReason] = useState('')
   const [error, setError] = useState('')
@@ -16,6 +17,14 @@ export default function StockAdjustments() {
       .then((r) => setProducts(r.data.data.products))
       .catch((e) => setError(getError(e)))
   }, [])
+
+  const filteredProducts = useMemo(() => {
+    const q = productSearch.trim().toLowerCase()
+    if (!q) return products
+    return products.filter((p) =>
+      p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q) || (p.barcode || '').toLowerCase().includes(q)
+    )
+  }, [products, productSearch])
 
   const selected = products.find((p) => p._id === productId)
   const diff = selected && actualQty !== '' ? Number(actualQty) - selected.quantity : null
@@ -29,6 +38,7 @@ export default function StockAdjustments() {
       const { data } = await api.post('/stock/adjustments', { productId, actualQuantity: Number(actualQty), reason })
       setResult(data.data)
       setProductId('')
+      setProductSearch('')
       setActualQty('')
       setReason('')
     } catch (err) {
@@ -57,9 +67,13 @@ export default function StockAdjustments() {
             <Form onSubmit={submit}>
               <Form.Group className="mb-3">
                 <Form.Label>Product *</Form.Label>
+                <InputGroup size="sm" className="mb-2">
+                  <InputGroup.Text><i className="bi bi-search" /></InputGroup.Text>
+                  <Form.Control placeholder="Search products by name, SKU or barcode..." value={productSearch} onChange={(e) => { setProductSearch(e.target.value); setProductId(''); setActualQty('') }} />
+                </InputGroup>
                 <Form.Select value={productId} onChange={(e) => { setProductId(e.target.value); setActualQty('') }} required>
-                  <option value="">-- Select product --</option>
-                  {products.map((p) => (
+                  <option value="">{filteredProducts.length === 0 && productSearch ? 'No products found' : '-- Select product --'}</option>
+                  {filteredProducts.map((p) => (
                     <option key={p._id} value={p._id}>{p.name} ({p.sku}) — system qty: {p.quantity}</option>
                   ))}
                 </Form.Select>
