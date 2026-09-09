@@ -5,6 +5,7 @@ const { protect, authorize } = require('../middleware/auth');
 
 router.use(protect);
 router.get('/next-sku', authorize('products.read', 'products.create', 'stock.read', 'sales.read', 'sales.create'), c.nextSku);
+router.get('/count', authorize('products.read', 'stock.read', 'sales.read', 'sales.create'), c.count);
 router.get('/', authorize('products.read', 'stock.read', 'sales.read', 'sales.create'), c.list);
 router.get('/:id', authorize('products.read', 'stock.read', 'sales.read', 'sales.create'), c.getOne);
 router.post('/', authorize('products.create'), upload.single('image'), c.create);

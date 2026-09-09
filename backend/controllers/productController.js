@@ -40,6 +40,12 @@ exports.nextSku = wrapAsync(async (req, res) => {
   res.json({ success: true, data: { sku } });
 });
 
+/** Total number of products stored in the database (all statuses). */
+exports.count = wrapAsync(async (req, res) => {
+  const total = await Product.countDocuments({});
+  res.json({ success: true, data: { total } });
+});
+
 const buildFilter = (query) => {
   const filter = {};
   if (query.category) {

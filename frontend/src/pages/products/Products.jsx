@@ -14,6 +14,7 @@ export default function Products() {
   const [page, setPage] = useState(1)
   const [pages, setPages] = useState(1)
   const [total, setTotal] = useState(0)
+  const [totalCount, setTotalCount] = useState(0)
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
   const [stockState, setStockState] = useState('')
@@ -46,7 +47,17 @@ export default function Products() {
     }
   }, [page, search, category, stockState, status, sort])
 
+  const loadCount = useCallback(async () => {
+    try {
+      const { data } = await api.get('/products/count')
+      setTotalCount(data.data.total)
+    } catch (err) {
+      setTotalCount(0)
+    }
+  }, [])
+
   useEffect(() => { load() }, [load])
+  useEffect(() => { loadCount() }, [loadCount])
   useEffect(() => {
     api.get('/categories').then((r) => setCategories(r.data.data.categories)).catch(() => {})
   }, [])
@@ -58,6 +69,7 @@ export default function Products() {
       setDeactivating(null)
       setToast({ type: 'success', msg: data.message })
       load()
+      loadCount()
     } catch (err) {
       setToast({ type: 'danger', msg: getError(err) })
     } finally {
@@ -89,7 +101,7 @@ export default function Products() {
               verticalAlign: 'middle'
             }}
           >
-            {total}
+            {totalCount}
           </span>
         </h4>
         {hasPermission('products.create') && (
@@ -177,7 +189,7 @@ export default function Products() {
         />
       </Card>
 
-      <ProductForm show={showForm} product={editing} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); load() }} />
+      <ProductForm show={showForm} product={editing} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); load(); loadCount() }} />
 
       <ConfirmDialog
         show={Boolean(deactivating)}
