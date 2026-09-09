@@ -3,6 +3,7 @@ import { Card, Row, Col, Form, Button, InputGroup, ListGroup, Badge, Alert, Moda
 import { useNavigate } from 'react-router-dom'
 import api, { getError } from '../../api/client'
 import { formatMoney } from '../../context/LanguageContext'
+import QuickAddProduct from '../../components/products/QuickAddProduct'
 
 const PAYMENT_METHODS = [
   ['CASH', 'bi-cash-stack', 'Cash', 'Cash on the spot'],
@@ -33,6 +34,7 @@ export default function NewSale() {
   const [confirming, setConfirming] = useState(false)
   const [saving, setSaving] = useState(false)
   const [completedSale, setCompletedSale] = useState(null)
+  const [showQuickAdd, setShowQuickAdd] = useState(false)
   const searchTimer = useRef(null)
 
   useEffect(() => {
@@ -124,6 +126,13 @@ export default function NewSale() {
     setPaymentMethod(m)
     setPayFull(m === 'CASH' || m === 'MOMO' || m === 'BANK')
     setAmountPaidInput('')
+  }
+
+  const handleQuickCreated = (p) => {
+    setProducts((prev) => [p, ...prev])
+    setProductSearch('')
+    setShowQuickAdd(false)
+    if (Number(p.quantity) > 0) addToCart(p)
   }
 
   const submitSale = async () => {
@@ -245,10 +254,15 @@ export default function NewSale() {
 
           <Card body>
             <Form.Label className="small fw-semibold">2. Products</Form.Label>
-            <InputGroup className="mb-3">
-              <InputGroup.Text><i className="bi bi-search" /></InputGroup.Text>
-              <Form.Control placeholder="Search by name, SKU or scan barcode..." value={productSearch} onChange={(e) => setProductSearch(e.target.value)} autoFocus />
-            </InputGroup>
+            <div className="d-flex gap-2 mb-3">
+              <InputGroup>
+                <InputGroup.Text><i className="bi bi-search" /></InputGroup.Text>
+                <Form.Control placeholder="Search by name, SKU or scan barcode..." value={productSearch} onChange={(e) => setProductSearch(e.target.value)} autoFocus />
+              </InputGroup>
+              <Button variant="outline-primary" className="text-nowrap flex-shrink-0" onClick={() => setShowQuickAdd(true)} title="Create a new product on the spot">
+                <i className="bi bi-plus-lg me-1" />Add Product
+              </Button>
+            </div>
 
             <Row className="g-2" xs={2} md={3}>
               {filteredProducts.map((p) => (
@@ -464,6 +478,12 @@ export default function NewSale() {
           </Button>
         </Modal.Footer>
       </Modal>
+
+      <QuickAddProduct
+        show={showQuickAdd}
+        onClose={() => !saving && setShowQuickAdd(false)}
+        onCreated={handleQuickCreated}
+      />
     </div>
   )
 }

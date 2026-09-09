@@ -23,6 +23,76 @@ const computeStatus = (total, paid) => {
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
+const recomputeSupplierAggregates = (onDemand) => {
+  if (onDemand.supplierDetails && onDemand.supplierDetails.length) {
+    onDemand.supplierCost = round2(onDemand.supplierDetails.reduce((s, d) => s + d.totalCost, 0));
+    onDemand.supplierPaid = round2(onDemand.supplierDetails.reduce((s, d) => s + d.amountPaid, 0));
+    onDemand.supplierBalance = round2(onDemand.supplierDetails.reduce((s, d) => s + d.balance, 0));
+    onDemand.supplierPaymentStatus = computeStatus(onDemand.supplierCost, onDemand.supplierPaid);
+  }
+};
+
+/** Resolves per-item suppliers, snapshots items and groups them by supplier. */
+const buildItemSnapshots = async ({ items, fallbackSupplierId, session }) => {
+  const itemSnapshots = [];
+  const supplierCache = new Map();
+  const supplierGroups = new Map();
+  const orderedSuppliers = [];
+
+  const getSupplier = async (id) => {
+    const key = String(id);
+    if (supplierCache.has(key)) return supplierCache.get(key);
+    const supplier = await Supplier.findById(id).session(session);
+    if (!supplier) throw new ApiError(400, `Supplier not found for id ${id}.`);
+    supplierCache.set(key, supplier);
+    if (!supplierGroups.has(key)) {
+      supplierGroups.set(key, { supplier: supplier._id, supplierName: supplier.name, items: [], totalCost: 0 });
+      orderedSuppliers.push(supplier);
+    }
+    return supplier;
+  };
+
+  for (const item of items) {
+    const product = item.product ? await Product.findById(item.product).session(session) : null;
+    const productName = item.productName?.trim() || product?.name;
+    if (!productName) throw new ApiError(400, 'Each on-demand item needs a product name.');
+    const qty = Number(item.quantity);
+    if (!qty || qty <= 0) throw new ApiError(400, `Invalid quantity for "${productName}".`);
+    const supplierCost = Number(item.supplierCostPrice ?? item.costPrice);
+    if (!Number.isFinite(supplierCost) || supplierCost < 0) {
+      throw new ApiError(400, `Invalid supplier cost for "${productName}".`);
+    }
+    const sellingPrice = Number(item.sellingPrice ?? item.unitPrice ?? product?.sellingPrice);
+    if (!Number.isFinite(sellingPrice) || sellingPrice < 0) {
+      throw new ApiError(400, `Invalid selling price for "${productName}".`);
+    }
+    const sid = item.supplier || item.supplierId || fallbackSupplierId;
+    if (!sid) throw new ApiError(400, `A supplier is required for "${productName}".`);
+    const supplier = await getSupplier(sid);
+
+    const totalCost = round2(qty * supplierCost);
+    const totalRevenue = round2(qty * sellingPrice);
+    const snap = {
+      product: product?._id,
+      productName,
+      quantity: qty,
+      supplierCostPrice: supplierCost,
+      sellingPrice,
+      totalCost,
+      totalRevenue,
+      profit: round2(totalRevenue - totalCost),
+      supplier: supplier._id,
+      supplierName: supplier.name
+    };
+    itemSnapshots.push(snap);
+    const group = supplierGroups.get(String(supplier._id));
+    group.items.push(snap);
+    group.totalCost = round2(group.totalCost + snap.totalCost);
+  }
+
+  return { itemSnapshots, supplierGroups, orderedSuppliers };
+};
+
 /**
  * Creates an On-Demand Sale atomically.
  *
@@ -43,9 +113,8 @@ const createOnDemand = async ({ payload, user }) => {
         customerPhone,
         items,
         supplierId,
-        supplierName,
+        supplierPayments = [],
         amountPaid = 0,
-        supplierPaid = 0,
         paymentMethod = 'CASH',
         paymentReference,
         dueDate,
@@ -55,58 +124,43 @@ const createOnDemand = async ({ payload, user }) => {
       if (!Array.isArray(items) || items.length === 0) {
         throw new ApiError(400, 'On-Demand sale must contain at least one product.');
       }
-      if ((!supplierId && !supplierName) || !supplierId) {
-        throw new ApiError(400, 'A supplier is required for the on-demand purchase.');
-      }
 
       const customer = await resolveCustomer({ customerId, name: customerName, phone: customerPhone, session });
-      const supplier = await Supplier.findById(supplierId).session(session);
-      if (!supplier) throw new ApiError(404, 'Supplier not found.');
-
-      const itemSnapshots = [];
-      for (const item of items) {
-        const product = item.product ? await Product.findById(item.product).session(session) : null;
-        const productName = item.productName?.trim() || product?.name;
-        if (!productName) throw new ApiError(400, 'Each on-demand item needs a product name.');
-        const qty = Number(item.quantity);
-        if (!qty || qty <= 0) throw new ApiError(400, `Invalid quantity for "${productName}".`);
-        const supplierCost = Number(item.supplierCostPrice ?? item.costPrice);
-        if (!Number.isFinite(supplierCost) || supplierCost < 0) {
-          throw new ApiError(400, `Invalid supplier cost for "${productName}".`);
-        }
-        const sellingPrice = Number(item.sellingPrice ?? item.unitPrice ?? product?.sellingPrice);
-        if (!Number.isFinite(sellingPrice) || sellingPrice < 0) {
-          throw new ApiError(400, `Invalid selling price for "${productName}".`);
-        }
-        const totalCost = round2(qty * supplierCost);
-        const totalRevenue = round2(qty * sellingPrice);
-        itemSnapshots.push({
-          product: product?._id,
-          productName,
-          quantity: qty,
-          supplierCostPrice: supplierCost,
-          sellingPrice,
-          totalCost,
-          totalRevenue,
-          profit: round2(totalRevenue - totalCost)
-        });
-      }
+      const { itemSnapshots, supplierGroups, orderedSuppliers } = await buildItemSnapshots({ items, fallbackSupplierId: supplierId, session });
 
       const totalCost = round2(itemSnapshots.reduce((s, i) => s + i.totalCost, 0));
       const totalAmount = round2(itemSnapshots.reduce((s, i) => s + i.totalRevenue, 0));
       const totalProfit = round2(totalAmount - totalCost);
 
+      // Resolve initial payments per supplier.
+      const initialPayments = new Map();
+      for (const sp of supplierPayments || []) {
+        const sid = sp && sp.supplier ? String(sp.supplier) : null;
+        const amt = Math.max(0, Number(sp.amount) || 0);
+        if (sid && amt > 0) initialPayments.set(sid, amt);
+      }
+      const paidBySupplier = new Map();
+      for (const [key, g] of supplierGroups) {
+        const supPaid = initialPayments.get(key) || 0;
+        if (supPaid > g.totalCost + 0.001) {
+          throw new ApiError(400, `Supplier payment for ${g.supplierName} exceeds its purchase cost of ${g.totalCost.toLocaleString()} RWF.`);
+        }
+        paidBySupplier.set(key, { paid: supPaid, balance: round2(g.totalCost - supPaid) });
+      }
+      const supplierPaidOk = round2([...paidBySupplier.values()].reduce((s, p) => s + p.paid, 0));
+      const supplierBalance = round2([...paidBySupplier.values()].reduce((s, p) => s + p.balance, 0));
+
       const paid = Math.max(0, Number(amountPaid) || 0);
       if (paid > totalAmount) throw new ApiError(400, 'Customer payment cannot exceed the sale total.');
       const balance = round2(Math.max(0, totalAmount - paid));
-      const supplierPaidOk = Math.max(0, Number(supplierPaid) || 0);
-      const supplierBalance = round2(Math.max(0, totalCost - supplierPaidOk));
 
       const transactionNumber = await nextSequence('onDemandNumber', 'OND', session);
       const saleNumber = await nextSequence('saleNumber', 'INV', session);
-      const purchaseNumber = await nextSequence('purchase', 'PUR', session);
 
-      // 1. The On-Demand master record (customer {->} supplier {->} cost {->} sale).
+      const supplierNames = orderedSuppliers.map((s) => s.name);
+      const supplierLabel = supplierNames.join(', ');
+
+      // 1. The On-Demand master record (customer {->} supplier(s) {->} cost {->} sale).
       const [onDemand] = await OnDemand.create(
         [
           {
@@ -115,8 +169,20 @@ const createOnDemand = async ({ payload, user }) => {
             customerName: customer.name,
             customerPhone: customer.phone,
             items: itemSnapshots,
-            supplier: supplier._id,
-            supplierName: supplier.name,
+            supplierDetails: orderedSuppliers.map((s) => {
+              const group = supplierGroups.get(String(s._id));
+              const { paid: supPaid, balance: supBalance } = paidBySupplier.get(String(s._id));
+              return {
+                supplier: s._id,
+                supplierName: s.name,
+                totalCost: group.totalCost,
+                amountPaid: supPaid,
+                balance: supBalance,
+                paymentStatus: computeStatus(group.totalCost, supPaid)
+              };
+            }),
+            supplier: orderedSuppliers[0]._id,
+            supplierName: supplierLabel,
             supplierCost: totalCost,
             customerSellingPrice: totalAmount,
             totalAmount,
@@ -172,37 +238,78 @@ const createOnDemand = async ({ payload, user }) => {
             paymentReference,
             cashier: user._id,
             onDemand: onDemand._id,
-            notes: `On-demand purchase from ${supplier.name} (${transactionNumber})`
+            notes: `On-demand purchase from ${supplierLabel} (${transactionNumber})`
           }
         ],
         { session }
       );
 
-      // 3. The supplier purchase side (no stock movement - goods go directly to the customer).
-      const [purchase] = await Purchase.create(
-        [
-          {
-            purchaseNumber,
-            supplier: supplier._id,
-            supplierName: supplier.name,
-            items: itemSnapshots.map((i) => ({
-              product: i.product,
-              productName: i.productName,
-              quantity: i.quantity,
-              costPrice: i.supplierCostPrice,
-              subtotal: i.totalCost
-            })),
-            totalAmount: totalCost,
-            paymentMethod: paymentMethod === 'LOAN' || paymentMethod === 'CREDIT' ? 'CASH' : paymentMethod,
-            paymentStatus: computeStatus(totalCost, supplierPaidOk),
-            amountPaid: supplierPaidOk,
-            remainingAmount: supplierBalance,
-            notes: `On-demand for customer ${customer.name} (${transactionNumber}) - direct supplier purchase`,
-            createdBy: user._id
+      // 3. One supplier purchase + payment per supplier (no stock movement - goods go directly to the customer).
+      let firstPurchaseId = null;
+      const purchases = [];
+      for (const s of orderedSuppliers) {
+        const key = String(s._id);
+        const group = supplierGroups.get(key);
+        const { paid: supPaid } = paidBySupplier.get(key);
+        const purchaseNumber = await nextSequence('purchase', 'PUR', session);
+        const [purchase] = await Purchase.create(
+          [
+            {
+              purchaseNumber,
+              supplier: s._id,
+              supplierName: s.name,
+              items: group.items.map((i) => ({
+                product: i.product,
+                productName: i.productName,
+                quantity: i.quantity,
+                costPrice: i.supplierCostPrice,
+                subtotal: i.totalCost
+              })),
+              totalAmount: group.totalCost,
+              paymentMethod: paymentMethod === 'LOAN' || paymentMethod === 'CREDIT' ? 'CASH' : paymentMethod,
+              paymentStatus: computeStatus(group.totalCost, supPaid),
+              amountPaid: supPaid,
+              remainingAmount: round2(group.totalCost - supPaid),
+              onDemand: onDemand._id,
+              onDemandNumber: transactionNumber,
+              notes: `On-demand for customer ${customer.name} (${transactionNumber}) - direct supplier purchase from ${s.name}`,
+              createdBy: user._id
+            }
+          ],
+          { session }
+        );
+        if (!firstPurchaseId) firstPurchaseId = purchase._id;
+        purchases.push(purchase);
+
+        const entry = onDemand.supplierDetails.find((d) => String(d.supplier) === String(s._id));
+        if (entry) entry.purchase = purchase._id;
+
+        if (supPaid > 0) {
+          const spNumber = await nextSequence('supplierPayment', 'SP', session);
+          await SupplierPayment.create(
+            [
+              {
+                paymentNumber: spNumber,
+                purchase: purchase._id,
+                supplier: s._id,
+                amount: supPaid,
+                paymentMethod: paymentMethod === 'LOAN' || paymentMethod === 'CREDIT' ? 'CASH' : paymentMethod,
+                notes: `On-demand payment for ${transactionNumber} (${s.name})`,
+                createdBy: user._id
+              }
+            ],
+            { session }
+          );
+          if (entry) {
+            entry.payments.push({
+              paymentNumber: spNumber,
+              amount: supPaid,
+              method: paymentMethod === 'LOAN' || paymentMethod === 'CREDIT' ? 'CASH' : paymentMethod,
+              receivedBy: user._id
+            });
           }
-        ],
-        { session }
-      );
+        }
+      }
 
       // 4. Customer payment record.
       if (paid > 0) {
@@ -227,29 +334,10 @@ const createOnDemand = async ({ payload, user }) => {
         );
       }
 
-      // 5. Supplier payment record.
-      if (supplierPaidOk > 0) {
-        const spNumber = await nextSequence('supplierPayment', 'SP', session);
-        await SupplierPayment.create(
-          [
-            {
-              paymentNumber: spNumber,
-              purchase: purchase._id,
-              supplier: supplier._id,
-              amount: supplierPaidOk,
-              paymentMethod: paymentMethod === 'LOAN' || paymentMethod === 'CREDIT' ? 'CASH' : paymentMethod,
-              notes: `On-demand payment for ${transactionNumber}`,
-              createdBy: user._id
-            }
-          ],
-          { session }
-        );
-      }
-
       // Track stock only if the item physically entered and left our stock - by default it does not.
       // When `receiveIntoStock` is true the supplier purchase adds stock and the sale removes it.
 
-      // 6. Credit / loan for unpaid customer balance.
+      // 5. Credit / loan for unpaid customer balance.
       if (balance > 0) {
         const loanNumber = await nextSequence('loanNumber', 'LN', session);
         const finalDueDate = dueDate ? new Date(dueDate) : new Date(Date.now() + (settings.defaultDueDays || 30) * 86400000);
@@ -277,21 +365,21 @@ const createOnDemand = async ({ payload, user }) => {
         );
       }
 
-      // 7. Customer aggregates.
+      // 6. Customer aggregates.
       customer.totalPurchases += totalAmount;
       customer.totalPaid += paid;
       customer.outstandingBalance += balance;
       await customer.save({ session });
 
-      // 8. Update OnDemand with linked references.
+      // 7. Update OnDemand with linked references.
       onDemand.sale = sale._id;
-      onDemand.purchase = purchase._id;
+      onDemand.purchase = firstPurchaseId;
       await onDemand.save({ session });
 
       await notify({
         type: 'NEW_ON_DEMAND',
         title: 'On-Demand Sale',
-        message: `${transactionNumber}: ${customer.name} bought ${itemSnapshots.length} item(s) via ${supplier.name}, total ${totalAmount.toLocaleString()} RWF, profit ${totalProfit.toLocaleString()} RWF.`,
+        message: `${transactionNumber}: ${customer.name} bought ${itemSnapshots.length} item(s) via ${supplierLabel}, total ${totalAmount.toLocaleString()} RWF, profit ${totalProfit.toLocaleString()} RWF.`,
         link: `/on-demand/${onDemand._id}`,
         meta: { onDemandId: onDemand._id },
         session
@@ -302,12 +390,12 @@ const createOnDemand = async ({ payload, user }) => {
         action: ACTIONS.ONDEMAND_CREATE,
         entity: 'OnDemand',
         entityId: onDemand._id,
-        description: `Created on-demand sale ${transactionNumber} for ${customer.name} via ${supplier.name}, cost ${totalCost} RWF, revenue ${totalAmount} RWF, profit ${totalProfit} RWF.`,
-        details: { items: itemSnapshots, totalCost, totalAmount, totalProfit, paid, supplierPaid: supplierPaidOk },
+        description: `Created on-demand sale ${transactionNumber} for ${customer.name} via ${supplierLabel}, cost ${totalCost} RWF, revenue ${totalAmount} RWF, profit ${totalProfit} RWF.`,
+        details: { items: itemSnapshots, suppliers: supplierNames, totalCost, totalAmount, totalProfit, paid, supplierPaid: supplierPaidOk },
         session
       });
 
-      result = { onDemand, sale, purchase };
+      result = { onDemand, sale, purchases };
     });
     return result;
   } finally {
@@ -316,7 +404,7 @@ const createOnDemand = async ({ payload, user }) => {
 };
 
 /** Records an additional payment against an on-demand transaction (customer side or supplier side). */
-const recordOnDemandPayment = async ({ onDemandId, side, amount, method, reference, notes, user }) => {
+const recordOnDemandPayment = async ({ onDemandId, side, amount, method, reference, notes, supplierId, user }) => {
   const session = await mongoose.startSession();
   try {
     let result;
@@ -333,39 +421,92 @@ const recordOnDemandPayment = async ({ onDemandId, side, amount, method, referen
       let spPayment;
       let paymentNumber;
       if (side === 'supplier') {
-        if (payAmount > onDemand.supplierBalance + 0.001) {
-          throw new ApiError(400, `Payment exceeds the outstanding supplier balance of ${onDemand.supplierBalance.toLocaleString()} RWF.`);
-        }
-        onDemand.supplierPaid += payAmount;
-        onDemand.supplierBalance = Math.max(0, onDemand.supplierBalance - payAmount);
-        onDemand.supplierPaymentStatus = computeStatus(onDemand.supplierCost, onDemand.supplierPaid);
+        if (onDemand.supplierDetails && onDemand.supplierDetails.length > 0) {
+          const details = onDemand.supplierDetails.filter((d) => d.balance > 0.001);
+          const entry = supplierId
+            ? onDemand.supplierDetails.find((d) => String(d.supplier) === String(supplierId))
+            : (details[0] || onDemand.supplierDetails[0]);
+          if (!entry) throw new ApiError(400, 'Supplier not found on this transaction.');
+          if (payAmount > entry.balance + 0.001) {
+            throw new ApiError(400, `Payment exceeds the outstanding supplier balance of ${entry.balance.toLocaleString()} RWF.`);
+          }
 
-        const spNumber = await nextSequence('supplierPayment', 'SP', session);
-        const purchase = onDemand.purchase ? await Purchase.findById(onDemand.purchase).session(session) : null;
-        [spPayment] = await SupplierPayment.create(
-          [
-            {
-              paymentNumber: spNumber,
-              purchase: purchase ? purchase._id : undefined,
-              supplier: onDemand.supplier,
-              amount: payAmount,
-              paymentMethod: method,
-              reference,
-              notes: notes || `On-demand supplier payment for ${onDemand.transactionNumber}`,
-              createdBy: user._id
-            }
-          ],
-          { session }
-        );
-        if (purchase) {
-          purchase.amountPaid += payAmount;
-          purchase.remainingAmount = Math.max(0, purchase.totalAmount - purchase.amountPaid);
-          if (purchase.remainingAmount <= 0.001) purchase.paymentStatus = 'PAID';
-          else purchase.paymentStatus = 'PARTIALLY_PAID';
-          await purchase.save({ session });
+          entry.amountPaid += payAmount;
+          entry.balance = Math.max(0, entry.balance - payAmount);
+          entry.paymentStatus = computeStatus(entry.totalCost, entry.amountPaid);
+
+          const spNumber = await nextSequence('supplierPayment', 'SP', session);
+          const purchase = entry.purchase
+            ? await Purchase.findById(entry.purchase).session(session)
+            : (onDemand.purchase ? await Purchase.findById(onDemand.purchase).session(session) : null);
+          [spPayment] = await SupplierPayment.create(
+            [
+              {
+                paymentNumber: spNumber,
+                purchase: purchase ? purchase._id : undefined,
+                supplier: entry.supplier,
+                amount: payAmount,
+                paymentMethod: method,
+                reference,
+                notes: notes || `On-demand supplier payment for ${onDemand.transactionNumber} (${entry.supplierName})`,
+                createdBy: user._id
+              }
+            ],
+            { session }
+          );
+          entry.payments.push({
+            paymentNumber: spNumber,
+            amount: payAmount,
+            method,
+            reference,
+            receivedBy: user._id,
+            receivedAt: new Date()
+          });
+          if (purchase) {
+            purchase.amountPaid += payAmount;
+            purchase.remainingAmount = Math.max(0, purchase.totalAmount - purchase.amountPaid);
+            purchase.paymentStatus = purchase.remainingAmount <= 0.001 ? 'PAID' : 'PARTIALLY_PAID';
+            await purchase.save({ session });
+          }
+          recomputeSupplierAggregates(onDemand);
+          payment = spPayment;
+          paymentNumber = spNumber;
+        } else {
+          // Legacy single-supplier on-demand record.
+          if (payAmount > onDemand.supplierBalance + 0.001) {
+            throw new ApiError(400, `Payment exceeds the outstanding supplier balance of ${onDemand.supplierBalance.toLocaleString()} RWF.`);
+          }
+          onDemand.supplierPaid += payAmount;
+          onDemand.supplierBalance = Math.max(0, onDemand.supplierBalance - payAmount);
+          onDemand.supplierPaymentStatus = computeStatus(onDemand.supplierCost, onDemand.supplierPaid);
+
+          const spNumber = await nextSequence('supplierPayment', 'SP', session);
+          const purchase = onDemand.purchase ? await Purchase.findById(onDemand.purchase).session(session) : null;
+          [spPayment] = await SupplierPayment.create(
+            [
+              {
+                paymentNumber: spNumber,
+                purchase: purchase ? purchase._id : undefined,
+                supplier: onDemand.supplier,
+                amount: payAmount,
+                paymentMethod: method,
+                reference,
+                notes: notes || `On-demand supplier payment for ${onDemand.transactionNumber}`,
+                createdBy: user._id
+              }
+            ],
+            { session }
+          );
+          if (purchase) {
+            purchase.amountPaid += payAmount;
+            purchase.remainingAmount = Math.max(0, purchase.totalAmount - purchase.amountPaid);
+            if (purchase.remainingAmount <= 0.001) purchase.paymentStatus = 'PAID';
+            else purchase.paymentStatus = 'PARTIALLY_PAID';
+            await purchase.save({ session });
+          }
+          payment = spPayment;
+          paymentNumber = spNumber;
         }
-        payment = spPayment;
-        paymentNumber = spNumber;
       } else {
         if (payAmount > onDemand.balance + 0.001) {
           throw new ApiError(400, `Payment exceeds the outstanding customer balance of ${onDemand.balance.toLocaleString()} RWF.`);

@@ -17,6 +17,7 @@ export default function OnDemandSale() {
   const [showNew, setShowNew] = useState(false)
   const [paying, setPaying] = useState(null)
   const [paySide, setPaySide] = useState('customer')
+  const [paySupplier, setPaySupplier] = useState('')
   const [payAmount, setPayAmount] = useState('')
   const [payMethod, setPayMethod] = useState('CASH')
   const [payReference, setPayReference] = useState('')
@@ -43,10 +44,34 @@ export default function OnDemandSale() {
     setError('')
     setPaying(t)
     setPaySide(side)
-    setPayAmount(String(side === 'customer' ? t.balance : t.supplierBalance))
     setPayMethod('CASH')
     setPayReference('')
+    if (side === 'supplier') {
+      const details = (t.supplierDetails || []).filter((d) => (d.balance || 0) > 0.001)
+      const options = details.length ? details : (t.supplierDetails && t.supplierDetails.length ? t.supplierDetails : [])
+      const first = options[0]
+      const id = first ? (first.supplier?._id || first.supplier) : (t.supplier?._id || t.supplier)
+      setPaySupplier(id || '')
+      setPayAmount(String(first ? (first.balance != null ? first.balance : t.supplierBalance) : t.supplierBalance))
+    } else {
+      setPaySupplier('')
+      setPayAmount(String(t.balance))
+    }
   }
+
+  const supplierPayTargets = useMemo(() => {
+    if (!paying || paySide !== 'supplier') return []
+    const details = paying.supplierDetails || []
+    if (details.length === 0) {
+      return [{ id: paying.supplier?._id || paying.supplier, name: paying.supplierName || paying.supplier?.name, balance: paying.supplierBalance }]
+    }
+    const outstanding = details.filter((d) => (d.balance || 0) > 0.001)
+    return (outstanding.length ? outstanding : details).map((d) => ({
+      id: d.supplier?._id || d.supplier,
+      name: d.supplierName || d.supplier?.name || 'Supplier',
+      balance: d.balance || 0
+    }))
+  }, [paying, paySide])
 
   const submitPay = async () => {
     setSaving(true)
@@ -56,7 +81,8 @@ export default function OnDemandSale() {
         side: paySide,
         amount: Number(payAmount),
         method: payMethod,
-        reference: payReference || undefined
+        reference: payReference || undefined,
+        supplierId: paySide === 'supplier' ? (paySupplier || undefined) : undefined
       })
       setPaying(null)
       load()
@@ -87,6 +113,13 @@ export default function OnDemandSale() {
   ], [stats])
 
   const canOpen = (t) => ['ACTIVE', 'COMPLETED'].includes(t.status)
+
+  const supplierNames = (t) => {
+    if (t.supplierDetails && t.supplierDetails.length) {
+      return t.supplierDetails.map((d) => d.supplierName || d.supplier?.name || 'Supplier').join(', ')
+    }
+    return t.supplierName || t.supplier?.name || '-'
+  }
 
   return (
     <div>
@@ -127,7 +160,7 @@ export default function OnDemandSale() {
           <Table hover size="sm" className="align-middle bg-white mb-0">
             <thead>
               <tr>
-                <th>Ref</th><th>Date</th><th>Customer</th><th>Supplier</th><th>Items</th>
+                <th>Ref</th><th>Date</th><th>Customer</th><th>Suppliers</th><th>Items</th>
                 <th>Revenue</th><th>Cost</th><th>Profit</th><th>Customer Paid/Bal</th><th>Supplier O/S</th><th>Status</th><th>Actions</th>
               </tr>
             </thead>
@@ -141,7 +174,7 @@ export default function OnDemandSale() {
                   <td><strong>{t.transactionNumber}</strong></td>
                   <td className="small text-nowrap">{new Date(t.createdAt).toLocaleDateString()}</td>
                   <td className="small">{t.customerName || t.customer?.name}</td>
-                  <td className="small text-nowrap">{t.supplierName || t.supplier?.name}</td>
+                  <td className="small text-nowrap">{supplierNames(t)}</td>
                   <td className="small">{t.items.length}</td>
                   <td className="small">{formatMoney(t.totalAmount)}</td>
                   <td className="small text-muted">{formatMoney(t.totalCost)}</td>
@@ -150,7 +183,16 @@ export default function OnDemandSale() {
                     {formatMoney(t.amountPaid || 0)}
                     {t.balance > 0.001 && <div className="text-danger">due {formatMoney(t.balance)}</div>}
                   </td>
-                  <td className="small text-danger">{t.supplierBalance > 0.001 ? formatMoney(t.supplierBalance) : 'settled'}</td>
+                  <td className="small text-danger">
+                    {t.supplierDetails && t.supplierDetails.length ? (
+                      t.supplierDetails.map((d, i) => (
+                        <span key={i} className="d-block">
+                          <span className="text-muted">{d.supplierName || d.supplier?.name || 'Supplier'}:</span>{' '}
+                          {(d.balance || 0) > 0.001 ? formatMoney(d.balance) : <span className="text-success">settled</span>}
+                        </span>
+                      ))
+                    ) : t.supplierBalance > 0.001 ? formatMoney(t.supplierBalance) : <span className="text-success">settled</span>}
+                  </td>
                   <td><StatusBadge value={t.status} /></td>
                   <td>
                     {canOpen(t) && (
@@ -198,11 +240,43 @@ export default function OnDemandSale() {
         </Modal.Header>
         <Modal.Body>
           {error && <Alert variant="danger" className="py-2 small">{error}</Alert>}
-          <div className="small text-muted mb-3">
-            {paySide === 'customer'
-              ? <>Collecting from <strong>{paying?.customerName}</strong>. Outstanding: <strong className="text-danger">{formatMoney(paying?.balance)}</strong></>
-              : <>Paying <strong>{paying?.supplierName}</strong>. Supplier balance: <strong className="text-danger">{formatMoney(paying?.supplierBalance)}</strong></>}
-          </div>
+          {paySide === 'supplier' ? (
+            <>
+              <div className="small text-muted mb-3">
+                {supplierPayTargets.length > 1 ? (
+                  <>
+                    Select the supplier to pay. Outstanding balances:
+                    <ul className="mb-0 mt-1">
+                      {supplierPayTargets.map((s) => (
+                        <li key={String(s.id)}>{s.name}: <strong className="text-danger">{formatMoney(s.balance)}</strong></li>
+                      ))}
+                    </ul>
+                  </>
+                ) : (
+                  <>Paying <strong>{supplierPayTargets[0]?.name}</strong>. Supplier balance: <strong className="text-danger">{formatMoney(supplierPayTargets[0]?.balance)}</strong></>
+                )}
+              </div>
+              {supplierPayTargets.length > 1 && (
+                <Form.Group className="mb-2">
+                  <Form.Label className="small fw-semibold">Supplier</Form.Label>
+                  <Form.Select
+                    value={paySupplier}
+                    onChange={(e) => {
+                      const next = supplierPayTargets.find((s) => String(s.id) === e.target.value)
+                      setPaySupplier(e.target.value)
+                      setPayAmount(String(next ? next.balance : '0'))
+                    }}
+                  >
+                    {supplierPayTargets.map((s) => <option key={String(s.id)} value={String(s.id)}>{s.name}</option>)}
+                  </Form.Select>
+                </Form.Group>
+              )}
+            </>
+          ) : (
+            <div className="small text-muted mb-3">
+              Collecting from <strong>{paying?.customerName}</strong>. Outstanding: <strong className="text-danger">{formatMoney(paying?.balance)}</strong>
+            </div>
+          )}
           <Form.Group className="mb-2">
             <Form.Label className="small fw-semibold">Amount (RWF) *</Form.Label>
             <Form.Control type="number" min="0" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
@@ -242,7 +316,6 @@ function NewOnDemandModal({ show, onHide, saving, setSaving, onCreated }) {
   const [customer, setCustomer] = useState(null)
   const [newCustomer, setNewCustomer] = useState({ name: '', phone: '' })
 
-  const [supplierId, setSupplierId] = useState('')
   const [showQuickSupplier, setShowQuickSupplier] = useState(false)
   const [newSupplier, setNewSupplier] = useState({ name: '', phone: '' })
   const [savingSupplier, setSavingSupplier] = useState(false)
@@ -250,7 +323,7 @@ function NewOnDemandModal({ show, onHide, saving, setSaving, onCreated }) {
   const [lines, setLines] = useState([])
   const [productSearch, setProductSearch] = useState('')
   const [amountPaid, setAmountPaid] = useState('')
-  const [supplierPaid, setSupplierPaid] = useState('')
+  const [supplierPayments, setSupplierPayments] = useState({})
   const [paymentMethod, setPaymentMethod] = useState('CASH')
   const [paymentReference, setPaymentReference] = useState('')
   const [dueDate, setDueDate] = useState('')
@@ -292,10 +365,25 @@ function NewOnDemandModal({ show, onHide, saving, setSaving, onCreated }) {
     return { revenue, cost, profit: revenue - cost }
   }, [lines])
 
+  const supplierSummary = useMemo(() => {
+    const map = new Map()
+    for (const l of lines) {
+      if (!l.supplier) continue
+      const key = String(l.supplier)
+      if (!map.has(key)) {
+        const s = suppliers.find((x) => String(x._id) === key)
+        map.set(key, { id: l.supplier, key, name: s?.name || 'Supplier', cost: 0 })
+      }
+      map.get(key).cost += (Number(l.quantity) || 0) * (Number(l.supplierCostPrice) || 0)
+    }
+    return [...map.values()].map((r) => ({ ...r, cost: Math.round(r.cost * 100) / 100 }))
+  }, [lines, suppliers])
+
+  const supplierPaidTotal = Object.values(supplierPayments).reduce((s, v) => s + (Number(v) || 0), 0)
   const maxCustomerPaid = totals.revenue
   const maxSupplierPaid = totals.cost
 
-  const addLine = () => setLines((prev) => [...prev, { product: '', productName: '', quantity: 1, supplierCostPrice: '', sellingPrice: '' }])
+  const addLine = () => setLines((prev) => [...prev, { supplier: '', product: '', productName: '', quantity: 1, supplierCostPrice: '', sellingPrice: '' }])
 
   const pickProduct = (idx, pid) => {
     const p = products.find((x) => x._id === pid)
@@ -314,7 +402,6 @@ function NewOnDemandModal({ show, onHide, saving, setSaving, onCreated }) {
       const { data } = await api.post('/suppliers', { name: newSupplier.name.trim(), phone: newSupplier.phone.trim() })
       const sup = data.data.supplier
       setSuppliers((prev) => [sup, ...prev])
-      setSupplierId(sup._id)
       setShowQuickSupplier(false)
       setNewSupplier({ name: '', phone: '' })
     } catch (err) {
@@ -328,13 +415,16 @@ function NewOnDemandModal({ show, onHide, saving, setSaving, onCreated }) {
     if (!customer && (!newCustomer.name.trim() || !newCustomer.phone.trim())) {
       setError('Select a customer or provide a new customer name + phone.'); return
     }
-    if (!supplierId) { setError('Select a supplier or add a new one.'); return }
     if (lines.length === 0) { setError('Add at least one product line.'); return }
-    if (lines.some((l) => !l.productName.trim() || !Number(l.quantity) || Number(l.supplierCostPrice) < 0 || Number(l.sellingPrice) < 0)) {
-      setError('Every line needs a product name, quantity, supplier cost and selling price.'); return
+    if (lines.some((l) => !l.supplier || !l.productName.trim() || !Number(l.quantity) || Number(l.supplierCostPrice) < 0 || Number(l.sellingPrice) < 0)) {
+      setError('Every line needs a supplier, product name, quantity, supplier cost and selling price.'); return
     }
     if (Number(amountPaid || 0) > maxCustomerPaid) { setError('Customer payment cannot exceed the sale total.'); return }
-    if (Number(supplierPaid || 0) > maxSupplierPaid) { setError('Supplier payment cannot exceed the purchase total.'); return }
+    if (supplierPaidTotal > maxSupplierPaid + 0.001) { setError('Supplier payments cannot exceed the total purchase cost.'); return }
+    for (const r of supplierSummary) {
+      const val = Number(supplierPayments[r.id] || 0)
+      if (val > r.cost + 0.001) { setError(`Payment for ${r.name} cannot exceed its cost of ${formatMoney(r.cost)}.`); return }
+    }
 
     setSaving(true)
     setError('')
@@ -343,23 +433,23 @@ function NewOnDemandModal({ show, onHide, saving, setSaving, onCreated }) {
         customerId: customer?._id,
         customerName: customer ? undefined : newCustomer.name,
         customerPhone: customer ? undefined : newCustomer.phone,
-        supplierId,
-        items: lines.map(({ product, productName, quantity, supplierCostPrice, sellingPrice }) => ({
+        items: lines.map(({ product, productName, quantity, supplierCostPrice, sellingPrice, supplier }) => ({
           product: product || undefined,
           productName,
           quantity,
           supplierCostPrice,
-          sellingPrice
+          sellingPrice,
+          supplier
         })),
+        supplierPayments: Object.entries(supplierPayments).filter(([, v]) => Number(v) > 0).map(([supplier, amount]) => ({ supplier, amount: Number(amount) })),
         amountPaid: Number(amountPaid || 0),
-        supplierPaid: Number(supplierPaid || 0),
         paymentMethod,
         paymentReference: paymentReference || undefined,
         dueDate: dueDate || undefined,
         notes: notes || undefined
       })
-      setCustomer(null); setCustomerQuery(''); setSupplierId(''); setLines([])
-      setProductSearch(''); setAmountPaid(''); setSupplierPaid(''); setPaymentReference(''); setDueDate(''); setNotes('')
+      setCustomer(null); setCustomerQuery(''); setLines([])
+      setProductSearch(''); setAmountPaid(''); setSupplierPayments({}); setPaymentReference(''); setDueDate(''); setNotes('')
       onCreated()
     } catch (err) {
       setError(getError(err))
@@ -378,7 +468,7 @@ function NewOnDemandModal({ show, onHide, saving, setSaving, onCreated }) {
         <div className="small text-muted mb-3">
           <i className="bi bi-info-circle me-1" />
           On-demand = products bought from a <strong>supplier</strong> directly for this <strong>customer</strong> (no stock movement).
-          Profit uses the supplier's actual cost.
+          Each line can come from a different supplier. Profit uses the supplier's actual cost.
         </div>
 
         <Row className="g-3">
@@ -416,65 +506,110 @@ function NewOnDemandModal({ show, onHide, saving, setSaving, onCreated }) {
           </Col>
 
           <Col md={6}>
-            <Form.Label className="small fw-semibold">2. Supplier *</Form.Label>
-            <div className="d-flex gap-1">
-              <Form.Select size="sm" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-                <option value="">Select supplier...</option>
-                {suppliers.map((s) => <option key={s._id} value={s._id}>{s.name} {s.companyName ? `(${s.companyName})` : ''}</option>)}
-              </Form.Select>
-              <Button size="sm" variant="outline-primary" className="text-nowrap" onClick={() => { setError(''); setShowQuickSupplier(true) }}>
-                <i className="bi bi-plus-lg" /> Add New
+            <Form.Label className="small fw-semibold">2. Products</Form.Label>
+            <InputGroup size="sm">
+              <InputGroup.Text><i className="bi bi-search" /></InputGroup.Text>
+              <Form.Control placeholder="Search products by name, SKU or barcode..." value={productSearch} onChange={(e) => setProductSearch(e.target.value)} />
+            </InputGroup>
+            <div className="d-flex justify-content-between align-items-center small text-muted mt-1">
+              <span>Pick a supplier and product for each line below.</span>
+              <Button size="sm" variant="link" className="p-0 text-primary text-decoration-none" onClick={() => { setError(''); setShowQuickSupplier(true) }}>
+                <i className="bi bi-plus-lg me-1" />Add Supplier
               </Button>
             </div>
           </Col>
         </Row>
 
-        <Form.Label className="small fw-semibold mt-3">3. Products</Form.Label>
-        <InputGroup size="sm" className="mb-2">
-          <InputGroup.Text><i className="bi bi-search" /></InputGroup.Text>
-          <Form.Control placeholder="Search products by name, SKU or barcode..." value={productSearch} onChange={(e) => setProductSearch(e.target.value)} />
-        </InputGroup>
         {lines.map((l, idx) => (
-          <Row key={idx} className="g-2 mb-2 align-items-center">
-            <Col md={4}>
-              <Form.Select size="sm" value={l.product} onChange={(e) => pickProduct(idx, e.target.value)}>
-                <option value="">{filteredProducts.length === 0 && productSearch ? 'No products found' : 'Pick from catalogue or type below...'}</option>
-                {filteredProducts.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
-              </Form.Select>
-            </Col>
-            <Col md={2}>
-              <Form.Control size="sm" placeholder="Product name*" value={l.productName} onChange={(e) => updateLine(idx, { productName: e.target.value })} />
-            </Col>
-            <Col md={1}>
-              <Form.Control size="sm" type="number" min="1" value={l.quantity} onChange={(e) => updateLine(idx, { quantity: e.target.value })} title="Qty" />
-            </Col>
-            <Col md={2}>
-              <InputGroup size="sm">
-                <InputGroup.Text style={{ fontSize: '0.7rem' }}>RWF</InputGroup.Text>
-                <Form.Control size="sm" type="number" min="0" value={l.supplierCostPrice} onChange={(e) => updateLine(idx, { supplierCostPrice: e.target.value })} title="Supplier cost" />
-              </InputGroup>
-            </Col>
-            <Col md={2}>
-              <InputGroup size="sm">
-                <InputGroup.Text style={{ fontSize: '0.7rem' }}>RWF</InputGroup.Text>
-                <Form.Control size="sm" type="number" min="0" value={l.sellingPrice} onChange={(e) => updateLine(idx, { sellingPrice: e.target.value })} title="Selling price" />
-              </InputGroup>
-            </Col>
-            <Col md={1}>
-              <Button size="sm" variant="light" className="border" onClick={() => setLines(lines.filter((_, i) => i !== idx))}><i className="bi bi-x-lg text-danger" /></Button>
-            </Col>
-          </Row>
+          <div key={idx} className="border rounded p-2 mt-2 bg-light-subtle">
+            <Row className="g-2 align-items-center">
+              <Col md={3}>
+                <Form.Label className="small fw-semibold mb-0" style={{ fontSize: '0.65rem' }}>Supplier *</Form.Label>
+                <Form.Select size="sm" value={l.supplier} onChange={(e) => updateLine(idx, { supplier: e.target.value })}>
+                  <option value="">Select supplier...</option>
+                  {suppliers.map((s) => <option key={s._id} value={s._id}>{s.name} {s.companyName ? `(${s.companyName})` : ''}</option>)}
+                </Form.Select>
+              </Col>
+              <Col md={4}>
+                <Form.Label className="small fw-semibold mb-0" style={{ fontSize: '0.65rem' }}>Product (catalogue)</Form.Label>
+                <Form.Select size="sm" value={l.product} onChange={(e) => pickProduct(idx, e.target.value)}>
+                  <option value="">{filteredProducts.length === 0 && productSearch ? 'No products found' : 'Pick from catalogue or type below...'}</option>
+                  {filteredProducts.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
+                </Form.Select>
+              </Col>
+              <Col md={4}>
+                <Form.Label className="small fw-semibold mb-0" style={{ fontSize: '0.65rem' }}>Product name *</Form.Label>
+                <Form.Control size="sm" placeholder="Name" value={l.productName} onChange={(e) => updateLine(idx, { productName: e.target.value })} />
+              </Col>
+              <Col md={1} className="text-end">
+                <Button size="sm" variant="light" className="border mt-4" onClick={() => setLines(lines.filter((_, i) => i !== idx))}><i className="bi bi-x-lg text-danger" /></Button>
+              </Col>
+            </Row>
+            <Row className="g-2 mt-0">
+              <Col md={2}>
+                <Form.Label className="small fw-semibold mb-0" style={{ fontSize: '0.65rem' }}>Qty *</Form.Label>
+                <Form.Control size="sm" type="number" min="1" value={l.quantity} onChange={(e) => updateLine(idx, { quantity: e.target.value })} />
+              </Col>
+              <Col md={3}>
+                <Form.Label className="small fw-semibold mb-0" style={{ fontSize: '0.65rem' }}>Supplier cost (RWF) *</Form.Label>
+                <Form.Control size="sm" type="number" min="0" value={l.supplierCostPrice} onChange={(e) => updateLine(idx, { supplierCostPrice: e.target.value })} />
+              </Col>
+              <Col md={3}>
+                <Form.Label className="small fw-semibold mb-0" style={{ fontSize: '0.65rem' }}>Selling price (RWF) *</Form.Label>
+                <Form.Control size="sm" type="number" min="0" value={l.sellingPrice} onChange={(e) => updateLine(idx, { sellingPrice: e.target.value })} />
+              </Col>
+              <Col md={2}>
+                <Form.Label className="small fw-semibold mb-0" style={{ fontSize: '0.65rem' }}>Line profit</Form.Label>
+                <div className="small pt-1">
+                  <strong className={(Number(l.quantity) || 0) * (Number(l.sellingPrice) || 0) - (Number(l.quantity) || 0) * (Number(l.supplierCostPrice) || 0) >= 0 ? 'text-success' : 'text-danger'}>
+                    {formatMoney((Number(l.quantity) || 0) * (Number(l.sellingPrice) || 0) - (Number(l.quantity) || 0) * (Number(l.supplierCostPrice) || 0))}
+                  </strong>
+                </div>
+              </Col>
+            </Row>
+          </div>
         ))}
-        <Button size="sm" variant="outline-primary" onClick={addLine} className="mb-3"><i className="bi bi-plus-lg me-1" />Add Product</Button>
+        <div className="d-flex gap-1 mt-2">
+          <Button size="sm" variant="outline-primary" onClick={addLine}><i className="bi bi-plus-lg me-1" />Add Product</Button>
+        </div>
 
-        <Row className="g-2 align-items-end mb-3">
-          <Col md={3}>
+        {supplierSummary.length > 0 && (
+          <div className="mt-3">
+            <Form.Label className="small fw-semibold">3. Pay suppliers now (optional)</Form.Label>
+            <Table size="sm" bordered className="align-middle mb-0">
+              <thead>
+                <tr><th>Supplier</th><th className="text-end">Purchase Cost</th><th style={{ width: 150 }} className="text-center">Pay Now (RWF)</th></tr>
+              </thead>
+              <tbody>
+                {supplierSummary.map((r) => (
+                  <tr key={r.key}>
+                    <td className="small fw-semibold">{r.name}</td>
+                    <td className="text-end small">{formatMoney(r.cost)}</td>
+                    <td>
+                      <Form.Control
+                        size="sm" type="number" min="0" max={r.cost}
+                        value={supplierPayments[r.id] || ''}
+                        onChange={(e) => {
+                          setError('')
+                          if (e.target.value !== '' && Number(e.target.value) > r.cost) {
+                            setError(`Payment for ${r.name} cannot exceed ${formatMoney(r.cost)}.`)
+                            return
+                          }
+                          setSupplierPayments((prev) => ({ ...prev, [r.id]: e.target.value }))
+                        }}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
+        )}
+
+        <Row className="g-2 align-items-end mb-3 mt-1">
+          <Col md={6}>
             <Form.Label className="small">Customer Pays Now (RWF)</Form.Label>
             <Form.Control size="sm" type="number" min="0" max={maxCustomerPaid} value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} />
-          </Col>
-          <Col md={3}>
-            <Form.Label className="small">Supplier Paid Now (RWF)</Form.Label>
-            <Form.Control size="sm" type="number" min="0" max={maxSupplierPaid} value={supplierPaid} onChange={(e) => setSupplierPaid(e.target.value)} />
           </Col>
           <Col md={3}>
             <Form.Label className="small">Payment Method</Form.Label>
@@ -500,7 +635,7 @@ function NewOnDemandModal({ show, onHide, saving, setSaving, onCreated }) {
 
         <div className="d-flex justify-content-between small bg-light border rounded p-2">
           <span>Revenue: <strong style={{ color: '#0d3b66' }}>{formatMoney(totals.revenue)}</strong> · Cost: {formatMoney(totals.cost)}</span>
-          <span>Profit: <strong className={totals.profit >= 0 ? 'text-success' : 'text-danger'}>{formatMoney(totals.profit)}</strong></span>
+          <span>Supplier pay: {formatMoney(supplierPaidTotal)} · Profit: <strong className={totals.profit >= 0 ? 'text-success' : 'text-danger'}>{formatMoney(totals.profit)}</strong></span>
         </div>
       </Modal.Body>
       <Modal.Footer>
@@ -527,7 +662,7 @@ function NewOnDemandModal({ show, onHide, saving, setSaving, onCreated }) {
         <Modal.Footer>
           <Button variant="light" size="sm" onClick={() => setShowQuickSupplier(false)} disabled={savingSupplier}>Cancel</Button>
           <Button size="sm" onClick={createSupplier} disabled={savingSupplier}>
-            {savingSupplier ? 'Saving...' : 'Add & Select'}
+            {savingSupplier ? 'Saving...' : 'Add & Save'}
           </Button>
         </Modal.Footer>
       </Modal>

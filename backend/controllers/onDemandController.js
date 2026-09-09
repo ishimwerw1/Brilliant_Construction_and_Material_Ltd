@@ -23,6 +23,7 @@ exports.list = wrapAsync(async (req, res) => {
 
   const [transactions, total] = await Promise.all([
     OnDemand.find(filter).populate('customer', 'name phone').populate('supplier', 'name phone')
+      .populate('supplierDetails.supplier', 'name phone')
       .sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
     OnDemand.countDocuments(filter)
   ]);
@@ -56,14 +57,21 @@ exports.getOne = wrapAsync(async (req, res) => {
   const transaction = await OnDemand.findById(req.params.id)
     .populate('customer', 'name phone email address')
     .populate('supplier', 'name phone companyName address')
+    .populate('supplierDetails.supplier', 'name phone companyName address')
     .populate('createdBy', 'fullName')
     .populate('sale');
   if (!transaction) throw new ApiError(404, 'On-Demand transaction not found.');
   const Payment = require('../models/Payment');
   const SupplierPayment = require('../models/SupplierPayment');
+  const purchaseIds = (transaction.supplierDetails || [])
+    .map((d) => d.purchase)
+    .filter(Boolean);
+  if (transaction.purchase && !purchaseIds.some((p) => String(p) === String(transaction.purchase))) {
+    purchaseIds.push(transaction.purchase);
+  }
   const [payments, supplierPayments] = await Promise.all([
     Payment.find({ onDemand: transaction._id }).sort({ createdAt: -1 }).populate('receivedBy', 'fullName'),
-    SupplierPayment.find({ purchase: transaction.purchase }).sort({ createdAt: -1 }).populate('createdBy', 'fullName')
+    SupplierPayment.find({ purchase: { $in: purchaseIds } }).sort({ createdAt: -1 }).populate('createdBy', 'fullName')
   ]);
   res.json({ success: true, data: { transaction, payments, supplierPayments } });
 });
@@ -78,7 +86,7 @@ exports.create = wrapAsync(async (req, res) => {
 });
 
 exports.recordPayment = wrapAsync(async (req, res) => {
-  const { side = 'customer', amount, method = 'CASH', reference, notes } = req.body;
+  const { side = 'customer', amount, method = 'CASH', reference, notes, supplierId } = req.body;
   if (!amount) throw new ApiError(400, 'Payment amount is required.');
   const result = await recordOnDemandPayment({
     onDemandId: req.params.id,
@@ -87,6 +95,7 @@ exports.recordPayment = wrapAsync(async (req, res) => {
     method,
     reference,
     notes,
+    supplierId,
     user: req.user
   });
   res.status(201).json({ success: true, message: 'Payment recorded.', data: result });

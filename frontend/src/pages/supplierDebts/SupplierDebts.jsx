@@ -139,7 +139,12 @@ export default function SupplierDebts() {
 
         <DataTable
           columns={[
-            { key: 'purchaseNumber', label: 'Purchase #', render: (d) => <strong className="small">{d.purchaseNumber}</strong> },
+            { key: 'purchaseNumber', label: 'Purchase #', render: (d) => (
+              <div>
+                <strong className="small">{d.purchaseNumber}</strong>
+                {d.onDemandNumber && <div><small className="text-muted">via <code style={{ fontSize: '0.68rem' }}>{d.onDemandNumber}</code></small></div>}
+              </div>
+            )},
             { key: 'supplierName', label: 'Supplier', render: (d) => (
               <span className="small">{d.supplierName || d.supplier?.name}<br /><small className="text-muted">{d.supplier?.phone}</small></span>
             )},

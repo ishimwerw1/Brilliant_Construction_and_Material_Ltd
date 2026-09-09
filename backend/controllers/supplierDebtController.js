@@ -1,9 +1,59 @@
 const Purchase = require('../models/Purchase');
 const SupplierPayment = require('../models/SupplierPayment');
+const OnDemand = require('../models/OnDemand');
 const ApiError = require('../utils/ApiError');
 const { wrapAsync } = require('../middleware/errorHandler');
 const { logAction, ACTIONS } = require('../services/auditService');
 const { nextSequence } = require('../utils/generateCode');
+
+const round2 = (n) => Math.round(n * 100) / 100;
+
+const computeDebtStatus = (total, paid) => {
+  if (paid <= 0) return 'UNPAID';
+  if (paid >= total - 0.001) return 'PAID';
+  return 'PARTIALLY_PAID';
+};
+
+/** When a supplier payment is recorded against a purchase that came from an On-Demand sale,
+ *  keep the On-Demand transaction's per-supplier balance in sync. */
+const linkPaymentToOnDemand = async ({ onDemandId, purchaseId, amount, paymentNumber, method, reference, receivedBy }) => {
+  if (!onDemandId) return;
+  const onDemand = await OnDemand.findById(onDemandId);
+  if (!onDemand) return;
+
+  const entry = onDemand.supplierDetails && onDemand.supplierDetails.length
+    ? onDemand.supplierDetails.find((d) => d.purchase && String(d.purchase) === String(purchaseId))
+    : null;
+
+  if (entry) {
+    entry.amountPaid = round2((entry.amountPaid || 0) + amount);
+    entry.balance = Math.max(0, round2(entry.totalCost - entry.amountPaid));
+    entry.paymentStatus = computeDebtStatus(entry.totalCost, entry.amountPaid);
+    entry.payments.push({
+      paymentNumber,
+      amount,
+      method,
+      reference: reference || '',
+      receivedBy,
+      receivedAt: new Date()
+    });
+    onDemand.supplierPaid = round2(onDemand.supplierDetails.reduce((s, d) => s + (d.amountPaid || 0), 0));
+    onDemand.supplierBalance = round2(onDemand.supplierDetails.reduce((s, d) => s + (d.balance || 0), 0));
+    onDemand.supplierPaymentStatus = computeDebtStatus(onDemand.supplierPaid + onDemand.supplierBalance, onDemand.supplierPaid);
+  } else if (!onDemand.supplierDetails || onDemand.supplierDetails.length === 0) {
+    // Legacy single-supplier on-demand record.
+    onDemand.supplierPaid = round2((onDemand.supplierPaid || 0) + amount);
+    onDemand.supplierBalance = Math.max(0, round2((onDemand.supplierCost || 0) - onDemand.supplierPaid));
+    onDemand.supplierPaymentStatus = computeDebtStatus(onDemand.supplierCost, onDemand.supplierPaid);
+  } else {
+    return;
+  }
+
+  if ((onDemand.balance || 0) <= 0.001 && (onDemand.supplierBalance || 0) <= 0.001) {
+    onDemand.status = 'COMPLETED';
+  }
+  await onDemand.save();
+};
 
 exports.listDebts = wrapAsync(async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
@@ -11,7 +61,7 @@ exports.listDebts = wrapAsync(async (req, res) => {
   const filter = { paymentStatus: { $in: ['UNPAID', 'PARTIALLY_PAID'] } };
   if (req.query.search?.trim()) {
     const s = new RegExp(req.query.search.trim(), 'i');
-    filter.$or = [{ purchaseNumber: s }, { supplierName: s }];
+    filter.$or = [{ purchaseNumber: s }, { supplierName: s }, { onDemandNumber: s }];
   }
   if (req.query.supplier) filter.supplier = req.query.supplier;
 
@@ -70,6 +120,17 @@ exports.recordPayment = wrapAsync(async (req, res) => {
     purchase.remainingAmount = purchase.totalAmount - purchase.amountPaid;
   }
   await purchase.save();
+
+  // Keep the linked On-Demand sale's supplier balance in sync (auto-link).
+  await linkPaymentToOnDemand({
+    onDemandId: purchase.onDemand,
+    purchaseId: purchase._id,
+    amount,
+    paymentNumber,
+    method: paymentMethod,
+    reference: reference?.trim(),
+    receivedBy: req.user._id
+  });
 
   await logAction({
     user: req.user,

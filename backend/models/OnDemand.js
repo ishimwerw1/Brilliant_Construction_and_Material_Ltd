@@ -9,7 +9,9 @@ const onDemandItemSchema = new mongoose.Schema(
     totalCost: { type: Number, required: true, min: 0 },
     totalRevenue: { type: Number, required: true, min: 0 },
     profit: { type: Number, default: 0 },
-    product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' }
+    product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+    supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier' },
+    supplierName: { type: String }
   },
   { _id: false }
 );
@@ -35,6 +37,19 @@ const onDemandSchema = new mongoose.Schema(
     items: {
       type: [onDemandItemSchema],
       validate: v => Array.isArray(v) && v.length > 0
+    },
+    supplierDetails: {
+      type: [{
+        supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier' },
+        supplierName: { type: String },
+        totalCost: { type: Number, default: 0, min: 0 },
+        amountPaid: { type: Number, default: 0, min: 0 },
+        balance: { type: Number, default: 0, min: 0 },
+        paymentStatus: { type: String, enum: ['PAID', 'PARTIALLY_PAID', 'UNPAID'], default: 'UNPAID' },
+        purchase: { type: mongoose.Schema.Types.ObjectId, ref: 'Purchase' },
+        payments: { type: [paymentRecordSchema], default: [] }
+      }],
+      default: []
     },
     supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier', required: true },
     supplierName: { type: String },

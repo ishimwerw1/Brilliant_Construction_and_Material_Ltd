@@ -19,6 +19,8 @@ const purchaseSchema = new mongoose.Schema({
   amountPaid: { type: Number, default: 0, min: 0 },
   remainingAmount: { type: Number, default: 0, min: 0 },
   dueDate: { type: Date },
+  onDemand: { type: mongoose.Schema.Types.ObjectId, ref: 'OnDemand' },
+  onDemandNumber: { type: String },
   notes: { type: String, trim: true, default: '' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   createdAt: { type: Date, default: Date.now },

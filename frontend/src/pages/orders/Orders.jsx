@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import api, { getError } from '../../api/client'
 import DataTable from '../../components/common/DataTable'
 import StatusBadge from '../../components/common/StatusBadge'
+import QuickAddProduct from '../../components/products/QuickAddProduct'
 import { formatMoney } from '../../context/LanguageContext'
 
 const STATUSES = ['ALL', 'PENDING', 'CONFIRMED', 'PARTIALLY_PAID', 'PAID', 'COMPLETED', 'CANCELLED']
@@ -246,6 +247,7 @@ function NewOrderModal({ show, onHide, saving, setSaving, onCreated }) {
   const [customer, setCustomer] = useState(null)
   const [lines, setLines] = useState([])
   const [productSearch, setProductSearch] = useState('')
+  const [showQuickAdd, setShowQuickAdd] = useState(false)
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('')
   const [notes, setNotes] = useState('')
   const [error, setError] = useState('')
@@ -293,6 +295,16 @@ function NewOrderModal({ show, onHide, saving, setSaving, onCreated }) {
 
   const updateLine = (idx, patch) => setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)))
 
+  const handleQuickCreated = (p) => {
+    setProducts((prev) => [p, ...prev])
+    setProductSearch('')
+    setShowQuickAdd(false)
+    setLines((prev) => [...prev, {
+      product: p._id, productName: p.name, sku: p.sku || '', quantity: 1,
+      unitPrice: p.sellingPrice || '', costPrice: Number(p.buyingPrice) || 0, discount: 0
+    }])
+  }
+
   const submit = async () => {
     if (!customer) { setError('Select a customer.'); return }
     if (lines.length === 0 || lines.some((l) => !l.product || !Number(l.quantity))) {
@@ -320,7 +332,8 @@ function NewOrderModal({ show, onHide, saving, setSaving, onCreated }) {
   }
 
   return (
-    <Modal show={show} onHide={onHide} centered backdrop="static" size="lg">
+    <>
+      <Modal show={show} onHide={onHide} centered backdrop="static" size="lg">
       <Modal.Header closeButton={!saving}>
         <Modal.Title className="fs-6 fw-bold"><i className="bi bi-plus-circle me-2 text-primary" />New Order</Modal.Title>
       </Modal.Header>
@@ -353,10 +366,15 @@ function NewOrderModal({ show, onHide, saving, setSaving, onCreated }) {
         )}
 
         <Form.Label className="small fw-semibold">2. Products (you can adjust prices/costs per line)</Form.Label>
-        <InputGroup size="sm" className="mb-2">
-          <InputGroup.Text><i className="bi bi-search" /></InputGroup.Text>
-          <Form.Control placeholder="Search products by name, SKU or barcode..." value={productSearch} onChange={(e) => setProductSearch(e.target.value)} />
-        </InputGroup>
+        <div className="d-flex gap-2 mb-2">
+          <InputGroup size="sm">
+            <InputGroup.Text><i className="bi bi-search" /></InputGroup.Text>
+            <Form.Control placeholder="Search products by name, SKU or barcode..." value={productSearch} onChange={(e) => setProductSearch(e.target.value)} />
+          </InputGroup>
+          <Button size="sm" variant="outline-primary" className="text-nowrap flex-shrink-0" onClick={() => setShowQuickAdd(true)} title="Create a new product on the spot">
+            <i className="bi bi-plus-lg me-1" />Add Product
+          </Button>
+        </div>
         {lines.map((l, idx) => (
           <Row key={idx} className="g-2 mb-2 align-items-end">
             <Col sm={5}>
@@ -413,12 +431,19 @@ function NewOrderModal({ show, onHide, saving, setSaving, onCreated }) {
           <span>Est. profit: <strong className={totals.profit >= 0 ? 'text-success' : 'text-danger'}>{formatMoney(totals.profit)}</strong></span>
         </div>
       </Modal.Body>
-      <Modal.Footer>
-        <Button variant="light" onClick={onHide} disabled={saving}>Cancel</Button>
-        <Button onClick={submit} disabled={saving}>
-          {saving ? <><span className="spinner-border spinner-border-sm me-1" />Creating...</> : <><i className="bi bi-check-lg me-1" />Create Order</>}
-        </Button>
-      </Modal.Footer>
-    </Modal>
+        <Modal.Footer>
+          <Button variant="light" onClick={onHide} disabled={saving}>Cancel</Button>
+          <Button onClick={submit} disabled={saving}>
+            {saving ? <><span className="spinner-border spinner-border-sm me-1" />Creating...</> : <><i className="bi bi-check-lg me-1" />Create Order</>}
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      <QuickAddProduct
+        show={showQuickAdd}
+        onClose={() => !saving && setShowQuickAdd(false)}
+        onCreated={handleQuickCreated}
+      />
+    </>
   )
 }
