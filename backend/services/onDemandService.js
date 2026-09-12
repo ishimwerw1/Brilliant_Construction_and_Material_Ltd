@@ -12,6 +12,7 @@ const Setting = require('../models/Setting');
 const ApiError = require('../utils/ApiError');
 const { nextSequence } = require('../utils/generateCode');
 const { applyStockMovement } = require('./stockService');
+const { computeItemStatus } = require('./saleService');
 const { notify } = require('./notificationService');
 const { logAction, ACTIONS } = require('./auditService');
 
@@ -352,7 +353,22 @@ const createOnDemand = async ({ payload, user }) => {
               onDemand: onDemand._id,
               saleNumber: sale.saleNumber,
               onDemandNumber: transactionNumber,
-              items: itemSnapshots.map((i) => ({ productName: i.productName, quantity: i.quantity, unitPrice: i.sellingPrice })),
+              items: itemSnapshots.map((i) => {
+                  const itemTotal = round2(Number(i.quantity) * Number(i.sellingPrice));
+                  const ratio = totalAmount > 0 ? Math.min(1, Number(paid) / Number(totalAmount)) : 0;
+                  const itemPaid = round2(itemTotal * ratio);
+                  const itemOutstanding = round2(Math.max(0, itemTotal - itemPaid));
+                  return {
+                    product: i.product,
+                    productName: i.productName,
+                    quantity: i.quantity,
+                    unitPrice: i.sellingPrice,
+                    totalAmount: itemTotal,
+                    amountPaid: itemPaid,
+                    outstandingBalance: itemOutstanding,
+                    status: computeItemStatus({ totalAmount: itemTotal, amountPaid: itemPaid, outstandingBalance: itemOutstanding })
+                  };
+                }),
               totalAmount: totalAmount,
               amountPaid: paid,
               outstandingBalance: balance,

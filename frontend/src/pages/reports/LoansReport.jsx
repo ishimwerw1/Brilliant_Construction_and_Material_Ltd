@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, Row, Col, Table, Button, Badge, Form, InputGroup } from 'react-bootstrap'
 import api from '../../api/client'
 import Chart from '../../components/common/Charts'
@@ -277,13 +277,17 @@ export default function LoansReport() {
                     <td>
                       {l.items && l.items.length > 0 ? (
                         <div>
-                          {l.items.slice(0, 2).map((item, i) => (
-                            <div key={i} className="small">
-                              <i className="bi bi-box-seam me-1 text-muted" style={{ fontSize: '0.7rem' }} />
-                              {item.productName} {item.quantity > 1 ? `x${item.quantity}` : ''}
-                            </div>
-                          ))}
-                          {l.items.length > 2 && <small className="text-muted">+{l.items.length - 2} more</small>}
+                          {l.items.slice(0, 3).map((item, i) => {
+                            const itemStatus = item.status || 'ACTIVE'
+                            return (
+                              <div key={i} className="small d-flex align-items-center gap-1">
+                                <i className="bi bi-box-seam text-muted" style={{ fontSize: '0.65rem' }} />
+                                <span>{item.productName}{item.quantity > 1 ? ` x${item.quantity}` : ''}</span>
+                                <StatusBadge value={itemStatus} />
+                              </div>
+                            )
+                          })}
+                          {l.items.length > 3 && <small className="text-muted">+{l.items.length - 3} more</small>}
                         </div>
                       ) : <span className="text-muted small">N/A</span>}
                     </td>

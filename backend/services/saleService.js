@@ -17,6 +17,55 @@ const computeStatus = (total, paid) => {
   return 'PARTIALLY_PAID';
 };
 
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+const itemTotal = (it) => Number(it.totalAmount) || (Number(it.unitPrice) * Number(it.quantity));
+
+const computeItemStatus = (total, paid) => {
+  if ((Number(paid) || 0) <= 0) return 'ACTIVE';
+  if (Number(paid) >= (Number(total) || 0) - 0.001) return 'PAID';
+  return 'PARTIALLY_PAID';
+};
+
+/**
+ * Recalculates the loan-level financials (totalAmount / amountPaid / outstandingBalance / status)
+ * from its individual items. Only active items are counted; returned/removed items drop out of the
+ * loan entirely (their remaining debt is written off on return). Closed/cancelled loans are untouched.
+ */
+const recomputeLoanFromItems = (loan) => {
+  const active = loan.items.filter((it) => (it.status || 'ACTIVE') !== 'REMOVED');
+  loan.totalAmount = round2(active.reduce((s, it) => s + itemTotal(it), 0));
+  loan.amountPaid = round2(active.reduce((s, it) => s + (Number(it.amountPaid) || 0), 0));
+  loan.outstandingBalance = round2(active.reduce((s, it) => s + (Number(it.outstandingBalance) || 0), 0));
+  if (loan.status === 'CANCELLED') return;
+  if (loan.outstandingBalance <= 0.001) loan.status = 'PAID';
+  else if (loan.amountPaid > 0) loan.status = 'PARTIALLY_PAID';
+  else loan.status = 'ACTIVE';
+};
+
+/**
+ * Applies a payment amount across the loan's active items (unpaid items first, in order).
+ * Updates each touched item's amountPaid / outstandingBalance / status, then recomputes the loan
+ * aggregates. Returns the amount actually applied.
+ */
+const applyPaymentToLoanItems = (loan, amount) => {
+  let remaining = amount;
+  for (const it of loan.items) {
+    if (remaining <= 0.001) break;
+    if ((it.status || 'ACTIVE') === 'REMOVED') continue;
+    const due = Number(it.outstandingBalance) || 0;
+    if (due <= 0.001) continue;
+    const thisAmount = Math.min(remaining, due);
+    it.amountPaid = round2((Number(it.amountPaid) || 0) + thisAmount);
+    it.outstandingBalance = round2(Math.max(0, due - thisAmount));
+    it.status = computeItemStatus(itemTotal(it), it.amountPaid);
+    it.updatedAt = new Date();
+    remaining = round2(remaining - thisAmount);
+  }
+  recomputeLoanFromItems(loan);
+  return round2(amount - remaining);
+};
+
 const resolveCustomer = async ({ customerId, name, phone, session }) => {
   if (customerId) {
     const customer = await Customer.findById(customerId).session(session);
@@ -223,6 +272,19 @@ const createSale = async ({ payload, user }) => {
       if (balance > 0) {
         const loanNumber = await nextSequence('loanNumber', 'LN', session);
         const finalDueDate = dueDate ? new Date(dueDate) : new Date(Date.now() + (settings.defaultDueDays || 30) * 86400000);
+        const loanItems = saleItems.map((i) => {
+          const itemTotal = i.quantity * i.unitPrice;
+          return {
+            product: i.product,
+            productName: i.productName,
+            quantity: i.quantity,
+            unitPrice: i.unitPrice,
+            totalAmount: itemTotal,
+            amountPaid: 0,
+            outstandingBalance: itemTotal,
+            status: 'ACTIVE'
+          };
+        });
         await Loan.create(
           [
             {
@@ -232,11 +294,7 @@ const createSale = async ({ payload, user }) => {
               customerPhone: customer.phone,
               sale: sale._id,
               saleNumber: sale.saleNumber,
-              items: saleItems.map((i) => ({
-                productName: i.productName,
-                quantity: i.quantity,
-                unitPrice: i.unitPrice
-              })),
+              items: loanItems,
               totalAmount: total,
               amountPaid: paidAmount,
               outstandingBalance: balance,
@@ -407,9 +465,7 @@ const repayLoan = async ({ loanId, amount, method, reference, notes, user }) => 
         { session }
       );
 
-      loan.amountPaid += payAmount;
-      loan.outstandingBalance = newBalance;
-      loan.status = newBalance <= 0.001 ? 'PAID' : 'PARTIALLY_PAID';
+      applyPaymentToLoanItems(loan, payAmount);
       await loan.save({ session });
 
       const sale = await Sale.findById(loan.sale).session(session);
@@ -531,9 +587,7 @@ const repayCustomerLoans = async ({ customerId, amount, method, reference, notes
           { session }
         );
 
-        loan.amountPaid += thisAmount;
-        loan.outstandingBalance = newBalance;
-        loan.status = newBalance <= 0.001 ? 'PAID' : 'PARTIALLY_PAID';
+        applyPaymentToLoanItems(loan, thisAmount);
         await loan.save({ session });
 
         const sale = await Sale.findById(loan.sale).session(session);
@@ -600,6 +654,271 @@ const repayCustomerLoans = async ({ customerId, amount, method, reference, notes
         loans: touchedLoans,
         customerOutstanding: customer.outstandingBalance
       };
+    });
+    return result;
+  } finally {
+    session.endSession();
+  }
+};
+
+/** Records a repayment against ONE specific loan item (product) only.
+ *  All other products in the loan stay untouched. Payment history is preserved. */
+const repayLoanItem = async ({ loanId, loanItemIndex, amount, method, reference, notes, user }) => {
+  const payAmount = Number(amount);
+  if (!payAmount || payAmount <= 0) throw new ApiError(400, 'Payment amount must be greater than zero.');
+  if (!['CASH', 'MOMO', 'BANK'].includes(method)) throw new ApiError(400, 'Payment method must be CASH, MOMO or BANK.');
+
+  const session = await mongoose.startSession();
+  try {
+    let result;
+    await session.withTransaction(async () => {
+      const loan = await Loan.findById(loanId).session(session);
+      if (!loan) throw new ApiError(404, 'Loan not found.');
+      if (['PAID', 'CANCELLED'].includes(loan.status)) {
+        throw new ApiError(400, `This loan is already ${loan.status.toLowerCase()}.`);
+      }
+      const idx = Number(loanItemIndex);
+      if (!Number.isInteger(idx) || idx < 0 || idx >= (loan.items || []).length) {
+        throw new ApiError(400, 'Invalid loan item index.');
+      }
+      const item = loan.items[idx];
+      if ((item.status || 'ACTIVE') === 'REMOVED') {
+        throw new ApiError(400, `"${item.productName}" was returned/removed and cannot receive payments.`);
+      }
+      const due = Number(item.outstandingBalance) || 0;
+      if (due <= 0.001) throw new ApiError(400, `"${item.productName}" is already fully paid.`);
+      if (payAmount > due + 0.001) {
+        throw new ApiError(400, `Payment exceeds the remaining balance of ${due.toLocaleString()} RWF for "${item.productName}".`);
+      }
+
+      const previousBalance = Number(loan.outstandingBalance) || 0;
+      const paymentNumber = await nextSequence('paymentNumber', 'PAY', session);
+      const payment = await Payment.create(
+        [
+          {
+            paymentNumber,
+            amount: payAmount,
+            method,
+            reference,
+            notes,
+            type: 'LOAN_REPAYMENT',
+            sale: loan.sale,
+            loan: loan._id,
+            loanItemIndex: idx,
+            loanItemName: item.productName,
+            customer: loan.customer,
+            customerName: loan.customerName,
+            receivedBy: user._id
+          }
+        ],
+        { session }
+      );
+
+      item.amountPaid = round2((Number(item.amountPaid) || 0) + payAmount);
+      item.outstandingBalance = round2(Math.max(0, due - payAmount));
+      item.status = computeItemStatus(itemTotal(item), item.amountPaid);
+      item.updatedAt = new Date();
+      recomputeLoanFromItems(loan);
+      await loan.save({ session });
+
+      const newBalance = Number(loan.outstandingBalance) || 0;
+
+      const sale = await Sale.findById(loan.sale).session(session);
+      if (sale && sale.status === 'COMPLETED') {
+        sale.amountPaid += payAmount;
+        sale.balance = Math.max(0, sale.balance - payAmount);
+        sale.paymentStatus = computeStatus(sale.total, sale.amountPaid);
+        await sale.save({ session });
+      }
+
+      if (loan.order) {
+        const Order = require('../models/Order');
+        const order = await Order.findById(loan.order).session(session);
+        if (order) {
+          order.amountPaid += payAmount;
+          order.balance = Math.max(0, order.balance - payAmount);
+          if (order.balance <= 0.001 && order.status !== 'COMPLETED' && order.status !== 'CANCELLED' && !order.sale) {
+            const { finalizeOrder } = require('./orderService');
+            await finalizeOrder({ order, session, user, customerAccountingDone: true });
+          } else if (order.status === 'PENDING' || order.status === 'CONFIRMED') {
+            order.status = 'PARTIALLY_PAID';
+            await order.save({ session });
+          } else if (order.balance <= 0.001) {
+            order.status = 'PAID';
+            await order.save({ session });
+          }
+        }
+      }
+
+      const customer = await Customer.findById(loan.customer).session(session);
+      if (customer) {
+        customer.totalPaid += payAmount;
+        customer.outstandingBalance = Math.max(0, customer.outstandingBalance - payAmount);
+        await customer.save({ session });
+      }
+
+      await notify({
+        type: 'LOAN_REPAYMENT',
+        title: 'Loan Repayment Received',
+        message: `${loan.customerName} repaid ${payAmount.toLocaleString()} RWF for ${item.productName} on ${loan.loanNumber}. Item remaining: ${item.outstandingBalance.toLocaleString()} RWF.`,
+        link: `/loans/${loan._id}`,
+        meta: { loanId: loan._id },
+        session
+      });
+
+      await logAction({
+        user,
+        action: ACTIONS.LOAN_REPAYMENT,
+        entity: 'Loan',
+        entityId: loan._id,
+        description: `Repayment ${paymentNumber}: ${payAmount} RWF from ${loan.customerName} for "${item.productName}" on ${loan.loanNumber}. Item balance ${due} -> ${item.outstandingBalance}.`,
+        details: { paymentNumber, amount: payAmount, method, loanItemIndex: idx, loanItemName: item.productName, previousBalance, newBalance },
+        session
+      });
+
+      result = { loan, payment };
+    });
+    return result;
+  } finally {
+    session.endSession();
+  }
+};
+
+/** Marks a single loan item as returned/removed without touching any other product in the loan.
+ *  The item's remaining debt is written off and the loan aggregates are recalculated. */
+const removeLoanItem = async ({ loanId, loanItemIndex, reason, user }) => {
+  const session = await mongoose.startSession();
+  try {
+    let result;
+    await session.withTransaction(async () => {
+      const loan = await Loan.findById(loanId).session(session);
+      if (!loan) throw new ApiError(404, 'Loan not found.');
+      if (['PAID', 'CANCELLED'].includes(loan.status)) {
+        throw new ApiError(400, `This loan is already ${loan.status.toLowerCase()} and cannot be modified.`);
+      }
+      const idx = Number(loanItemIndex);
+      if (!Number.isInteger(idx) || idx < 0 || idx >= (loan.items || []).length) {
+        throw new ApiError(400, 'Invalid loan item index.');
+      }
+      const item = loan.items[idx];
+      if ((item.status || 'ACTIVE') === 'REMOVED') throw new ApiError(400, `"${item.productName}" is already returned/removed.`);
+
+      const writeOff = Number(item.outstandingBalance) || 0;
+      const paidBack = Number(item.amountPaid) || 0;
+      const previousBalance = Number(loan.outstandingBalance) || 0;
+
+      item.status = 'REMOVED';
+      item.outstandingBalance = 0;
+      item.removedAt = new Date();
+      item.removeReason = (reason || 'Product returned').trim();
+      item.updatedAt = new Date();
+      recomputeLoanFromItems(loan);
+      await loan.save({ session });
+
+      const customer = await Customer.findById(loan.customer).session(session);
+      if (customer) {
+        customer.outstandingBalance = Math.max(0, customer.outstandingBalance - writeOff);
+        // Money paid toward the returned item is credited back so the customer's
+        // totals stay consistent with the loan. Payment history is fully preserved.
+        if (paidBack > 0) customer.totalPaid = Math.max(0, customer.totalPaid - paidBack);
+        await customer.save({ session });
+      }
+
+      await logAction({
+        user,
+        action: ACTIONS.LOAN_ITEM_REMOVE,
+        entity: 'Loan',
+        entityId: loan._id,
+        description: `Returned/removed "${item.productName}" from ${loan.loanNumber} (${item.quantity} x ${item.unitPrice} RWF). Debt written off: ${writeOff.toLocaleString()} RWF, repaid credited back: ${paidBack.toLocaleString()} RWF. Reason: ${item.removeReason}`,
+        details: { loanItemIndex: idx, loanItemName: item.productName, writeOff, paidBack, previousBalance, newBalance: Number(loan.outstandingBalance), reason: item.removeReason },
+        session
+      });
+
+      await notify({
+        type: 'LOAN_REPAIR',
+        title: 'Loan Product Returned',
+        message: `${item.productName} returned by ${loan.customerName}. Remaining loan debt: ${loan.outstandingBalance.toLocaleString()} RWF.`,
+        link: `/loans/${loan._id}`,
+        meta: { loanId: loan._id },
+        session
+      });
+
+      result = { loan, removedItem: item };
+    });
+    return result;
+  } finally {
+    session.endSession();
+  }
+};
+
+/** Edits a single loan item (product / quantity / price / amount) without touching other items.
+ *  Paid history is preserved; loan totals and the customer's outstanding balance are recalculated. */
+const updateLoanItem = async ({ loanId, loanItemIndex, updates, user }) => {
+  const session = await mongoose.startSession();
+  try {
+    let result;
+    await session.withTransaction(async () => {
+      const loan = await Loan.findById(loanId).session(session);
+      if (!loan) throw new ApiError(404, 'Loan not found.');
+      if (['PAID', 'CANCELLED'].includes(loan.status)) {
+        throw new ApiError(400, `Closed loans (${loan.status.toLowerCase()}) cannot be edited.`);
+      }
+      const idx = Number(loanItemIndex);
+      if (!Number.isInteger(idx) || idx < 0 || idx >= (loan.items || []).length) {
+        throw new ApiError(400, 'Invalid loan item index.');
+      }
+      const item = loan.items[idx];
+      if ((item.status || 'ACTIVE') === 'REMOVED') {
+        throw new ApiError(400, `"${item.productName}" was returned/removed and cannot be edited.`);
+      }
+
+      let productName = item.productName;
+      const productId = updates.product || item.product;
+      if (productId && String(productId) !== String(item.product)) {
+        const product = await Product.findById(productId).session(session);
+        if (!product) throw new ApiError(404, 'Product not found.');
+        productName = product.name;
+      }
+      const quantity = Number(updates.quantity ?? item.quantity);
+      const unitPrice = Number(updates.unitPrice ?? item.unitPrice);
+      if (!quantity || quantity <= 0) throw new ApiError(400, 'Invalid quantity.');
+      if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new ApiError(400, 'Invalid price.');
+
+      const paidSoFar = Number(item.amountPaid) || 0;
+      const newTotal = round2(quantity * unitPrice);
+
+      const oldLoanOutstanding = Number(loan.outstandingBalance) || 0;
+
+      item.product = productId || undefined;
+      item.productName = productName;
+      item.quantity = quantity;
+      item.unitPrice = unitPrice;
+      item.totalAmount = newTotal;
+      item.amountPaid = Math.min(paidSoFar, newTotal);
+      item.outstandingBalance = round2(Math.max(0, newTotal - item.amountPaid));
+      item.status = computeItemStatus(newTotal, item.amountPaid);
+      item.updatedAt = new Date();
+      recomputeLoanFromItems(loan);
+      await loan.save({ session });
+
+      const customer = await Customer.findById(loan.customer).session(session);
+      if (customer) {
+        const delta = (Number(loan.outstandingBalance) || 0) - oldLoanOutstanding;
+        customer.outstandingBalance = Math.max(0, customer.outstandingBalance + delta);
+        await customer.save({ session });
+      }
+
+      await logAction({
+        user,
+        action: ACTIONS.LOAN_ITEM_UPDATE,
+        entity: 'Loan',
+        entityId: loan._id,
+        description: `Updated "${item.productName}" on ${loan.loanNumber}: ${item.quantity} x ${item.unitPrice} RWF = ${item.totalAmount} RWF (paid ${item.amountPaid}, remaining ${item.outstandingBalance}).`,
+        details: { loanItemIndex: idx, item, totalAmount: loan.totalAmount, outstandingBalance: loan.outstandingBalance },
+        session
+      });
+
+      result = { loan };
     });
     return result;
   } finally {
@@ -688,4 +1007,4 @@ const deleteSale = async ({ saleId, user }) => {
   }
 };
 
-module.exports = { createSale, cancelSale, repayLoan, repayCustomerLoans, deleteSale, removeSaleRecord };
+module.exports = { createSale, cancelSale, repayLoan, repayCustomerLoans, repayLoanItem, removeLoanItem, updateLoanItem, deleteSale, removeSaleRecord, round2, computeItemStatus };

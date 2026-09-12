@@ -14,9 +14,22 @@ const loanSchema = new mongoose.Schema(
     onDemandNumber: { type: String },
     items: [
       {
+        product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
         productName: { type: String, required: true },
         quantity: { type: Number, required: true },
-        unitPrice: { type: Number, required: true }
+        unitPrice: { type: Number, required: true },
+        totalAmount: { type: Number, default: 0 },
+        amountPaid: { type: Number, default: 0, min: 0 },
+        outstandingBalance: { type: Number, default: 0, min: 0 },
+        status: {
+          type: String,
+          enum: ['ACTIVE', 'PARTIALLY_PAID', 'PAID', 'REMOVED'],
+          default: 'ACTIVE'
+        },
+        removedAt: { type: Date },
+        removeReason: { type: String },
+        createdAt: { type: Date, default: Date.now },
+        updatedAt: { type: Date, default: Date.now }
       }
     ],
     totalAmount: { type: Number, required: true, min: 0 },

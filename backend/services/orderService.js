@@ -8,7 +8,7 @@ const Sale = require('../models/Sale');
 const Setting = require('../models/Setting');
 const ApiError = require('../utils/ApiError');
 const { nextSequence } = require('../utils/generateCode');
-const { createSale, removeSaleRecord } = require('./saleService');
+const { createSale, removeSaleRecord, round2, computeItemStatus } = require('./saleService');
 const { notify } = require('./notificationService');
 const { logAction, ACTIONS } = require('./auditService');
 
@@ -241,7 +241,22 @@ const payOrder = async ({ orderId, amount, method, reference, notes, user }) => 
                 customerPhone: customer.phone,
                 order: order._id,
                 orderNumber: order.orderNumber,
-                items: order.items.map((i) => ({ productName: i.productName, quantity: i.quantity, unitPrice: i.unitPrice })),
+                items: order.items.map((i) => {
+                  const itemTotal = round2(Number(i.quantity) * Number(i.unitPrice));
+                  const ratio = order.total > 0 ? Math.min(1, Number(order.amountPaid) / Number(order.total)) : 0;
+                  const itemPaid = round2(itemTotal * ratio);
+                  const itemOutstanding = round2(Math.max(0, itemTotal - itemPaid));
+                  return {
+                    product: i.product,
+                    productName: i.productName,
+                    quantity: i.quantity,
+                    unitPrice: i.unitPrice,
+                    totalAmount: itemTotal,
+                    amountPaid: itemPaid,
+                    outstandingBalance: itemOutstanding,
+                    status: computeItemStatus({ totalAmount: itemTotal, amountPaid: itemPaid, outstandingBalance: itemOutstanding })
+                  };
+                }),
                 totalAmount: order.total,
                 amountPaid: order.amountPaid,
                 outstandingBalance: order.balance,

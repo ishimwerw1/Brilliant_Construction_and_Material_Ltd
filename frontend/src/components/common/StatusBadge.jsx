@@ -20,6 +20,7 @@ const MAP = {
   BANK: { cls: 'badge-soft-primary', key: 'bank' },
   LOAN: { cls: 'badge-soft-warning', key: 'loan' },
   CREDIT: { cls: 'badge-soft-warning', key: 'loan' },
+  REMOVED: { cls: 'badge-soft-secondary', key: 'removed' },
   MIXED: { cls: 'badge-soft-secondary', key: 'paymentMethod' }
 }
 

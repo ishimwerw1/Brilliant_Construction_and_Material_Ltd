@@ -11,6 +11,8 @@ const paymentSchema = new mongoose.Schema(
     order: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' },
     onDemand: { type: mongoose.Schema.Types.ObjectId, ref: 'OnDemand' },
     loan: { type: mongoose.Schema.Types.ObjectId, ref: 'Loan' },
+    loanItemIndex: { type: Number },
+    loanItemName: { type: String },
     customer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', required: true },
     customerName: { type: String },
     receivedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },

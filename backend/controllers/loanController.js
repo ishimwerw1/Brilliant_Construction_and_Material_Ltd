@@ -1,6 +1,6 @@
 const Loan = require('../models/Loan');
 const ApiError = require('../utils/ApiError');
-const { repayLoan, repayCustomerLoans } = require('../services/saleService');
+const { repayLoan, repayCustomerLoans, repayLoanItem, removeLoanItem, updateLoanItem } = require('../services/saleService');
 const { logAction, ACTIONS } = require('../services/auditService');
 const { wrapAsync } = require('../middleware/errorHandler');
 
@@ -261,4 +261,67 @@ exports.updateDueDate = wrapAsync(async (req, res) => {
     description: `Changed due date of ${loan.loanNumber}: ${oldDate?.toISOString().slice(0, 10)} -> ${date.toISOString().slice(0, 10)}.`
   });
   res.json({ success: true, message: 'Due date updated', data: { loan } });
+});
+
+/** GET /api/loans/:id/items/:itemIndex - return a single loan item plus its payment history. */
+exports.getItem = wrapAsync(async (req, res) => {
+  const loan = await Loan.findById(req.params.id).populate('customer', 'name phone email address');
+  if (!loan) throw new ApiError(404, 'Loan not found.');
+  const idx = Number(req.params.itemIndex);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= (loan.items || []).length) {
+    throw new ApiError(400, 'Invalid loan item index.');
+  }
+  const item = loan.items[idx];
+  const Payment = require('../models/Payment');
+  const payments = await Payment.find({ loan: loan._id, loanItemIndex: idx })
+    .sort({ createdAt: -1 })
+    .populate('receivedBy', 'fullName');
+  res.json({ success: true, data: { loan: { _id: loan._id, loanNumber: loan.loanNumber, customer: loan.customer, customerName: loan.customerName, customerPhone: loan.customerPhone, createdAt: loan.createdAt, items: loan.items }, item, payments } });
+});
+
+/** PUT /api/loans/:id/items/:itemIndex - edit a single loan product. */
+exports.updateItem = wrapAsync(async (req, res) => {
+  const { product, quantity, unitPrice } = req.body;
+  const { loan } = await updateLoanItem({
+    loanId: req.params.id,
+    loanItemIndex: req.params.itemIndex,
+    updates: { product, quantity, unitPrice },
+    user: req.user
+  });
+  res.json({ success: true, message: 'Loan product updated. Totals recalculated.', data: { loan } });
+});
+
+/** POST /api/loans/:id/items/:itemIndex/pay - record a payment for ONE loan product. */
+exports.payItem = wrapAsync(async (req, res) => {
+  const { amount, method = 'CASH', reference, notes } = req.body;
+  const { loan, payment } = await repayLoanItem({
+    loanId: req.params.id,
+    loanItemIndex: req.params.itemIndex,
+    amount,
+    method,
+    reference,
+    notes,
+    user: req.user
+  });
+  res.status(201).json({
+    success: true,
+    message: `Payment of ${payment.amount.toLocaleString()} RWF recorded for "${payment.loanItemName}". Loan remaining: ${loan.outstandingBalance.toLocaleString()} RWF`,
+    data: { loan, payment }
+  });
+});
+
+/** POST /api/loans/:id/items/:itemIndex/remove - return/remove ONE loan product. */
+exports.removeItem = wrapAsync(async (req, res) => {
+  const { reason } = req.body;
+  const { loan } = await removeLoanItem({
+    loanId: req.params.id,
+    loanItemIndex: req.params.itemIndex,
+    reason,
+    user: req.user
+  });
+  res.json({
+    success: true,
+    message: `"${loan.items[req.params.itemIndex]?.productName || 'Product'}" removed from the loan. Remaining debt: ${loan.outstandingBalance.toLocaleString()} RWF`,
+    data: { loan }
+  });
 });
