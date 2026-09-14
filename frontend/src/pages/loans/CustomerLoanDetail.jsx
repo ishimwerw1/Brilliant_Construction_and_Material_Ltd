@@ -337,6 +337,7 @@ export default function CustomerLoanDetail() {
                         onPay={startItemPay}
                         onEdit={startEdit}
                         onRemove={startReturn}
+                        onRecorded={(msg) => { setSuccessMsg(msg); load() }}
                       />
                     </td>
                   </tr>

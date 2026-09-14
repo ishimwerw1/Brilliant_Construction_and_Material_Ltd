@@ -689,11 +689,15 @@ main .card:not(.stat-card):hover { box-shadow: 0 4px 16px rgba(16, 42, 67, 0.1);
 }
 .loan-item-menu--float {
   min-width: 210px;
+  max-width: min(260px, calc(100vw - 16px));
   max-height: calc(100vh - 16px);
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   animation: bcml-pop 0.2s cubic-bezier(0.34, 1.4, 0.64, 1) both;
   transform-origin: top left;
 }
+.loan-item-menu--up { transform-origin: bottom left; }
 .loan-item-menu--sheet {
   left: 8px;
   right: 8px;

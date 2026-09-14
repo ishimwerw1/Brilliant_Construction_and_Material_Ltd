@@ -302,6 +302,7 @@ export default function LoanDetail() {
     onPay={(l, it, i) => startItemPay(it, i)}
     onEdit={(l, it, i) => startEditItem(it, i)}
     onRemove={(l, it, i) => startReturnItem(it, i)}
+    onRecorded={(msg) => { setSuccessMsg(msg); load() }}
   />
 </td>
                     </tr>

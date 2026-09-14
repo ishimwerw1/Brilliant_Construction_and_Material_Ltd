@@ -1,15 +1,19 @@
 import { useState } from 'react'
-import { Modal, Alert, Table, Spinner, Row, Col, Card } from 'react-bootstrap'
+import { Modal, Alert, Table, Spinner, Row, Col, Card, Button } from 'react-bootstrap'
 import api, { getError } from '../../api/client'
 import StatusBadge from '../common/StatusBadge'
 import MoreMenu from '../common/MoreMenu'
 import { formatMoney } from '../../context/LanguageContext'
 
-export default function LoanItemActions({ loan, item, itemIndex, canRepay, canRemove, onPay, onEdit, onRemove }) {
+export default function LoanItemActions({ loan, item, itemIndex, canRepay, canRemove, onPay, onEdit, onRemove, onRecorded }) {
   const [showDetails, setShowDetails] = useState(false)
   const [details, setDetails] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const [showMark, setShowMark] = useState(false)
+  const [savingMark, setSavingMark] = useState(false)
+  const [markError, setMarkError] = useState('')
 
   const itemTotal = Number(item.totalAmount) || (Number(item.quantity) * Number(item.unitPrice)) || 0
   const outstanding = Number(item.outstandingBalance) || 0
@@ -29,12 +33,34 @@ export default function LoanItemActions({ loan, item, itemIndex, canRepay, canRe
     }
   }
 
+  const markPaid = async () => {
+    if (!outstanding) return
+    setSavingMark(true)
+    setMarkError('')
+    try {
+      const { data } = await api.post(`/loans/${String(loan._id)}/items/${itemIndex}/pay`, {
+        amount: outstanding,
+        method: 'CASH',
+        notes: 'Marked as fully paid (single product)'
+      })
+      setShowMark(false)
+      onRecorded?.(
+        `"${item.productName}" marked as fully paid. Remaining loan debt: ${formatMoney(data.data.loan.outstandingBalance)}.`
+      )
+    } catch (err) {
+      setMarkError(getError(err))
+    } finally {
+      setSavingMark(false)
+    }
+  }
+
   const items = [
     { key: 'details', icon: 'bi-eye text-primary', label: 'View Details & History', onClick: openDetails },
     canRepay && outstanding > 0 && { key: 'pay', icon: 'bi-cash-stack text-success', label: 'Record Payment', onClick: () => onPay(loan, item, itemIndex) },
+    canRepay && outstanding > 0 && { key: 'mark', icon: 'bi-check2-circle text-success', label: 'Mark as Fully Paid', onClick: () => { setMarkError(''); setShowMark(true) } },
     { key: 'edit', icon: 'bi-pencil text-warning', label: 'Edit Product', onClick: () => onEdit(loan, item, itemIndex) },
     canRemove && (item.status || 'ACTIVE') !== 'REMOVED'
-      && { divider: true, key: 'remove', icon: 'bi-x-circle', label: 'Remove / Cancel Item', danger: true, onClick: () => onRemove(loan, item, itemIndex) }
+      && { key: 'remove', icon: 'bi-x-circle', label: 'Remove / Cancel Item', danger: true, onClick: () => onRemove(loan, item, itemIndex) }
   ].filter(Boolean)
 
   return (
@@ -100,6 +126,25 @@ export default function LoanItemActions({ loan, item, itemIndex, canRepay, canRe
             </>
           )}
         </Modal.Body>
+      </Modal>
+
+      <Modal show={showMark} onHide={() => !savingMark && setShowMark(false)} centered backdrop="static">
+        <Modal.Header closeButton={!savingMark}>
+          <Modal.Title className="fs-6 fw-bold">Mark "{item.productName}" as Fully Paid</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {markError && <Alert variant="danger" dismissible onClose={() => setMarkError('')} className="py-2 small">{markError}</Alert>}
+          <Alert variant="info" className="py-2 small">
+            This records a payment of <strong>{formatMoney(outstanding)}</strong> for this product only.
+            All other products on the loan stay unpaid.
+          </Alert>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="light" type="button" disabled={savingMark} onClick={() => setShowMark(false)}>Cancel</Button>
+          <Button type="submit" variant="success" disabled={savingMark || !outstanding} onClick={markPaid}>
+            {savingMark ? <><Spinner size="sm" className="me-1" />Saving...</> : <><i className="bi bi-check2-circle me-1" />Mark as Paid</>}
+          </Button>
+        </Modal.Footer>
       </Modal>
     </>
   )

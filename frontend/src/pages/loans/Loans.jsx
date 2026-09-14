@@ -313,6 +313,7 @@ export default function Loans() {
             onPay={startItemPay}
             onEdit={startEdit}
             onRemove={startReturn}
+            onRecorded={(msg) => { setSuccessMsg(msg); load(); if (menuCustomer) openMenuView(String(menuCustomer.customer._id), menuViewRef.current || 'ALL') }}
           />
         </td>
       </tr>
