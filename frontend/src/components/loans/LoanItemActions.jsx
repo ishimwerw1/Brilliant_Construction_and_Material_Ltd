@@ -56,8 +56,8 @@ export default function LoanItemActions({ loan, item, itemIndex, canRepay, canRe
 
   const items = [
     { key: 'details', icon: 'bi-eye text-primary', label: 'View Details & History', onClick: openDetails },
-    canRepay && outstanding > 0 && { key: 'pay', icon: 'bi-cash-stack text-success', label: 'Record Payment', onClick: () => onPay(loan, item, itemIndex) },
-    canRepay && outstanding > 0 && { key: 'mark', icon: 'bi-check2-circle text-success', label: 'Mark as Fully Paid', onClick: () => { setMarkError(''); setShowMark(true) } },
+    canRepay && outstanding > 0 && { key: 'pay', icon: 'bi-check2-circle text-success', label: 'Pay product', onClick: () => { setMarkError(''); setShowMark(true) } },
+    canRepay && outstanding > 0 && { key: 'partial', icon: 'bi-cash-stack text-success', label: 'Record partial payment', onClick: () => onPay(loan, item, itemIndex) },
     { key: 'edit', icon: 'bi-pencil text-warning', label: 'Edit Product', onClick: () => onEdit(loan, item, itemIndex) },
     canRemove && (item.status || 'ACTIVE') !== 'REMOVED'
       && { key: 'remove', icon: 'bi-x-circle', label: 'Remove / Cancel Item', danger: true, onClick: () => onRemove(loan, item, itemIndex) }
@@ -130,19 +130,20 @@ export default function LoanItemActions({ loan, item, itemIndex, canRepay, canRe
 
       <Modal show={showMark} onHide={() => !savingMark && setShowMark(false)} centered backdrop="static">
         <Modal.Header closeButton={!savingMark}>
-          <Modal.Title className="fs-6 fw-bold">Mark "{item.productName}" as Fully Paid</Modal.Title>
+          <Modal.Title className="fs-6 fw-bold">Pay Product — "{item.productName}"</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {markError && <Alert variant="danger" dismissible onClose={() => setMarkError('')} className="py-2 small">{markError}</Alert>}
           <Alert variant="info" className="py-2 small">
-            This records a payment of <strong>{formatMoney(outstanding)}</strong> for this product only.
+            Records a payment of <strong>{formatMoney(outstanding)}</strong> for this product only.
+            Its status will change to <strong>paid</strong> and the loan's total debt will drop by that amount.
             All other products on the loan stay unpaid.
           </Alert>
         </Modal.Body>
         <Modal.Footer>
           <Button variant="light" type="button" disabled={savingMark} onClick={() => setShowMark(false)}>Cancel</Button>
           <Button type="submit" variant="success" disabled={savingMark || !outstanding} onClick={markPaid}>
-            {savingMark ? <><Spinner size="sm" className="me-1" />Saving...</> : <><i className="bi bi-check2-circle me-1" />Mark as Paid</>}
+            {savingMark ? <><Spinner size="sm" className="me-1" />Saving...</> : <><i className="bi bi-check2-circle me-1" />Pay {formatMoney(outstanding)}</>}
           </Button>
         </Modal.Footer>
       </Modal>
