@@ -42,7 +42,7 @@ export default function LoansReport() {
     if (from) params.from = from
     if (to) params.to = to
     api.get('/loans', { params }).then((r) => {
-      setLoans(r.data.data.loans)
+      setLoans(r.data.data.customers || [])
       setTotalLoans(r.data.data.total)
       setLoanPages(r.data.data.pages)
       setLoanStats(r.data.data.stats)
@@ -236,7 +236,7 @@ export default function LoansReport() {
       <Card style={{ border: 'none', boxShadow: '0 1px 8px rgba(0,0,0,.08)', borderRadius: 12 }}>
         <Card.Body className="py-3">
           <div className="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
-            <h6 className="fw-semibold mb-0" style={{ color: '#0d3b66', fontSize: '0.85rem' }}>All Loans</h6>
+            <h6 className="fw-semibold mb-0" style={{ color: '#0d3b66', fontSize: '0.85rem' }}>Customers with Loans</h6>
             <div className="d-flex gap-2 flex-wrap align-items-center">
               <Form.Select size="sm" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ width: 130, fontSize: '0.8rem' }}>
                 {STATUS_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -245,7 +245,7 @@ export default function LoansReport() {
               <Form.Control size="sm" type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ width: 130, fontSize: '0.8rem' }} />
               <InputGroup size="sm" style={{ width: 180 }}>
                 <InputGroup.Text className="bg-light border-end-0"><i className="bi bi-search" style={{ fontSize: '0.75rem' }} /></InputGroup.Text>
-                <Form.Control placeholder="Search loans..." value={search} onChange={(e) => setSearch(e.target.value)} className="bg-light border-start-0" style={{ fontSize: '0.8rem' }} />
+                <Form.Control placeholder="Search customer..." value={search} onChange={(e) => setSearch(e.target.value)} className="bg-light border-start-0" style={{ fontSize: '0.8rem' }} />
               </InputGroup>
               <Button size="sm" variant="outline-secondary" onClick={() => { setSearch(''); setStatusFilter('all'); setFrom(''); setTo('') }} style={{ fontSize: '0.75rem' }}>
                 <i className="bi bi-x-circle me-1" />Clear
@@ -258,46 +258,42 @@ export default function LoansReport() {
                 <tr>
                   <th>Customer</th>
                   <th>Phone</th>
-                  <th>Product</th>
-                  <th className="text-end">Total</th>
+                  <th className="text-center">Loans</th>
+                  <th className="text-center">Products</th>
+                  <th className="text-end">Total Debt</th>
                   <th className="text-end">Paid</th>
                   <th className="text-end">Remaining</th>
                   <th className="text-center">Status</th>
-                  <th>Date</th>
+                  <th>Latest</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
-                {loans.length === 0 && <tr><td colSpan={8} className="text-center text-muted py-3">No loans found</td></tr>}
-                {loans.map((l) => (
-                  <tr key={l._id}>
-                    <td>
-                      <div className="fw-medium small">{l.customerName}</div>
-                    </td>
-                    <td className="small text-muted">{l.customerPhone}</td>
-                    <td>
-                      {l.items && l.items.length > 0 ? (
-                        <div>
-                          {l.items.slice(0, 3).map((item, i) => {
-                            const itemStatus = item.status || 'ACTIVE'
-                            return (
-                              <div key={i} className="small d-flex align-items-center gap-1">
-                                <i className="bi bi-box-seam text-muted" style={{ fontSize: '0.65rem' }} />
-                                <span>{item.productName}{item.quantity > 1 ? ` x${item.quantity}` : ''}</span>
-                                <StatusBadge value={itemStatus} />
-                              </div>
-                            )
-                          })}
-                          {l.items.length > 3 && <small className="text-muted">+{l.items.length - 3} more</small>}
-                        </div>
-                      ) : <span className="text-muted small">N/A</span>}
-                    </td>
-                    <td className="text-end fw-semibold">{formatMoney(l.totalAmount)}</td>
-                    <td className="text-end" style={{ color: '#1e7e46' }}>{formatMoney(l.amountPaid)}</td>
-                    <td className="text-end fw-bold" style={{ color: l.outstandingBalance > 0 ? '#c0392b' : '#1e7e46' }}>{formatMoney(l.outstandingBalance)}</td>
-                    <td className="text-center"><StatusBadge value={l.status} /></td>
-                    <td className="small text-muted">{new Date(l.createdAt).toLocaleDateString()}</td>
-                  </tr>
-                ))}
+                {loans.length === 0 && <tr><td colSpan={10} className="text-center text-muted py-3">No loans found</td></tr>}
+                {loans.map((c) => {
+                  const isPaid = Number(c.outstandingBalance || 0) <= 0.001
+                  const isPartial = Number(c.amountPaid || 0) > 0 && !isPaid
+                  return (
+                    <tr key={c._id}>
+                      <td className="fw-medium small">{c.customerName || 'Unknown'}</td>
+                      <td className="small text-muted"><code>{c.customerPhone || '-'}</code></td>
+                      <td className="text-center small">{c.loanCount}</td>
+                      <td className="text-center small">{c.productCount}</td>
+                      <td className="text-end fw-semibold">{formatMoney(c.totalAmount)}</td>
+                      <td className="text-end fw-semibold" style={{ color: '#1e7e46' }}>{formatMoney(c.amountPaid)}</td>
+                      <td className="text-end fw-bold" style={{ color: c.outstandingBalance > 0 ? '#c0392b' : '#1e7e46' }}>{formatMoney(c.outstandingBalance)}</td>
+                      <td className="text-center">
+                        <StatusBadge value={isPaid ? 'PAID' : isPartial ? 'PARTIALLY_PAID' : c.status || 'ACTIVE'} />
+                      </td>
+                      <td className="small text-muted">{new Date(c.latestCreatedAt).toLocaleDateString()}</td>
+                      <td>
+                        <a href={`/loans/customer/${typeof c._id === 'object' ? c._id.toString() : c._id}`} className="btn btn-sm btn-outline-primary py-0 px-2" style={{ fontSize: '0.7rem' }}>
+                          <i className="bi bi-eye me-1" />View
+                        </a>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </Table>
           </div>

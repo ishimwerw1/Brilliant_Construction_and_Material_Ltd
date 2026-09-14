@@ -4,6 +4,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import api, { getError } from '../../api/client'
 import StatusBadge from '../../components/common/StatusBadge'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
+import LoanItemActions from '../../components/loans/LoanItemActions'
 import Loading from '../../components/common/Loading'
 import { formatMoney } from '../../context/LanguageContext'
 import { useAuth } from '../../context/AuthContext'
@@ -291,23 +292,18 @@ export default function LoanDetail() {
                       <td className="text-end small text-success">{formatMoney(Number(item.amountPaid) || 0)}</td>
                       <td className="text-end small fw-semibold">{formatMoney(Number(item.outstandingBalance) || 0)}</td>
                       <td className="text-center"><StatusBadge value={item.status} /></td>
-                      <td className="text-end">
-                        <div className="d-flex gap-1 justify-content-end">
-                          {canRepay && Number(item.outstandingBalance) > 0 && (
-                            <Button size="sm" variant="outline-success" onClick={() => startItemPay(item, itemIdx)} title={`Pay for ${item.productName}`}>
-                              <i className="bi bi-cash-stack" />
-                            </Button>
-                          )}
-                          <Button size="sm" variant="outline-primary" onClick={() => startEditItem(item, itemIdx)} title="Edit">
-                            <i className="bi bi-pencil" />
-                          </Button>
-                          {canCancelLoan && (item.status || 'ACTIVE') !== 'REMOVED' && (
-                            <Button size="sm" variant="outline-danger" onClick={() => startReturnItem(item, itemIdx)} title="Return / Remove">
-                              <i className="bi bi-arrow-return-left" />
-                            </Button>
-                          )}
-                        </div>
-                      </td>
+<td className="text-end">
+  <LoanItemActions
+    loan={loan}
+    item={item}
+    itemIndex={itemIdx}
+    canRepay={canRepay}
+    canRemove={canCancelLoan}
+    onPay={(l, it, i) => startItemPay(it, i)}
+    onEdit={(l, it, i) => startEditItem(it, i)}
+    onRemove={(l, it, i) => startReturnItem(it, i)}
+  />
+</td>
                     </tr>
                   )
                 })}

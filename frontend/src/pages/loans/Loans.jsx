@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Card, Row, Col, Form, Badge, Button, Modal, Alert, Table, Dropdown } from 'react-bootstrap'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import api, { getError } from '../../api/client'
 import DataTable from '../../components/common/DataTable'
 import StatCard from '../../components/common/StatCard'
 import StatusBadge from '../../components/common/StatusBadge'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
+import LoanItemActions from '../../components/loans/LoanItemActions'
 import { formatMoney } from '../../context/LanguageContext'
 import { useAuth } from '../../context/AuthContext'
 
@@ -13,6 +14,7 @@ const OPEN_STATUSES = ['ACTIVE', 'PARTIALLY_PAID', 'OVERDUE']
 
 export default function Loans() {
   const { hasPermission } = useAuth()
+  const navigate = useNavigate()
   const [customers, setCustomers] = useState([])
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -39,6 +41,7 @@ export default function Loans() {
   const [menuData, setMenuData] = useState(null)
   const [menuLoading, setMenuLoading] = useState(false)
   const [menuError, setMenuError] = useState('')
+  const menuViewRef = useRef(null)
 
   // Per-item payment modal (from three-dot menu)
   const [itemPayTarget, setItemPayTarget] = useState(null) // { loan, item, itemIndex }
@@ -150,6 +153,7 @@ export default function Loans() {
   const openMenuView = async (customerId, view) => {
     setMenuCustomer(null)
     setMenuView(view)
+    menuViewRef.current = view
     setMenuData(null)
     setMenuError('')
     setMenuLoading(true)
@@ -197,7 +201,7 @@ export default function Loans() {
       )
       setItemPayTarget(null)
       load()
-      if (menuCustomer) openMenuView(String(menuCustomer.customer._id), menuView || 'ALL')
+      if (menuCustomer) openMenuView(String(menuCustomer.customer._id), menuViewRef.current || 'ALL')
     } catch (err) {
       setItemPayError(getError(err))
     } finally {
@@ -225,7 +229,7 @@ export default function Loans() {
       )
       setReturnTarget(null)
       load()
-      if (menuCustomer) openMenuView(String(menuCustomer.customer._id), menuView || 'ALL')
+      if (menuCustomer) openMenuView(String(menuCustomer.customer._id), menuViewRef.current || 'ALL')
     } catch (err) {
       alert(getError(err))
     } finally {
@@ -257,7 +261,7 @@ export default function Loans() {
       setSuccessMsg(`"${editTarget.item.productName}" updated. New total: ${formatMoney(qty * price)}.`)
       setEditTarget(null)
       load()
-      if (menuCustomer) openMenuView(String(menuCustomer.customer._id), menuView || 'ALL')
+      if (menuCustomer) openMenuView(String(menuCustomer.customer._id), menuViewRef.current || 'ALL')
     } catch (err) {
       setEditError(getError(err))
     } finally {
@@ -299,21 +303,16 @@ export default function Loans() {
         <td className="text-end small fw-semibold">{formatMoney(Number(item.outstandingBalance) || 0)}</td>
         <td className="text-center"><StatusBadge value={item.status} /></td>
         <td className="text-end">
-          <div className="d-flex gap-1 justify-content-end">
-            {showPayBtn && canRepay && Number(item.outstandingBalance) > 0 && (
-              <Button size="sm" variant="outline-success" onClick={() => startItemPay(r.loan, item, r.itemIndex)}>
-                <i className="bi bi-cash-stack" />
-              </Button>
-            )}
-            <Button size="sm" variant="outline-primary" onClick={() => startEdit(r.loan, item, r.itemIndex)} title="Edit product">
-              <i className="bi bi-pencil" />
-            </Button>
-            {canCancel && (
-              <Button size="sm" variant="outline-danger" onClick={() => startReturn(r.loan, item, r.itemIndex)} title="Return / Remove">
-                <i className="bi bi-arrow-return-left" />
-              </Button>
-            )}
-          </div>
+          <LoanItemActions
+            loan={r.loan}
+            item={item}
+            itemIndex={r.itemIndex}
+            canRepay={showPayBtn && canRepay}
+            canRemove={canCancel}
+            onPay={startItemPay}
+            onEdit={startEdit}
+            onRemove={startReturn}
+          />
         </td>
       </tr>
     )
@@ -396,7 +395,7 @@ export default function Loans() {
                     <Dropdown.Item onClick={() => openMenuView(String(c._id), 'HISTORY')}>
                       <i className="bi bi-clock-history me-2 text-secondary" />Payment History
                     </Dropdown.Item>
-                    <Dropdown.Item onClick={() => window.print()}>
+                    <Dropdown.Item onClick={() => navigate(`/loans/customer/${String(c._id)}?print=1`)}>
                       <i className="bi bi-printer me-2 text-muted" />Print Loan Invoice
                     </Dropdown.Item>
                   </Dropdown.Menu>
@@ -553,52 +552,42 @@ export default function Loans() {
               {menuView === 'HISTORY' && (
                 <>
                   <h6 className="fw-semibold mb-2" style={{ color: '#0d3b66' }}>Payment History</h6>
+                  <div className="small text-muted mb-2">Every payment recorded for this customer across all loans, newest first.</div>
                   <div style={{ maxHeight: 450, overflowY: 'auto' }}>
-                    {(() => {
-                      const allPayments = []
-                      ;(menuData.loans || []).forEach((loan) => {
-                        // payments for this customer will be in menuData.payments
-                        ;(loan.items || []).forEach((item) => {
-                          if ((item.status || 'ACTIVE') === 'REMOVED') return
-                          allPayments.push({
-                            productName: item.productName,
-                            amount: Number(item.amountPaid) || 0,
-                            remaining: Number(item.outstandingBalance) || 0,
-                            status: item.status,
-                            loanNumber: loan.loanNumber
-                          })
-                        })
-                      })
-                      return (
-                        <Table size="sm" hover responsive bordered className="mb-0 align-middle">
-                          <thead>
-                            <tr>
-                              <th>Loan #</th>
-                              <th>Product</th>
-                              <th className="text-end">Total</th>
-                              <th className="text-end">Paid</th>
-                              <th className="text-end">Remaining</th>
-                              <th className="text-center">Status</th>
+                    <Table size="sm" hover responsive bordered className="mb-0 align-middle">
+                      <thead>
+                        <tr>
+                          <th>Receipt #</th>
+                          <th>Date</th>
+                          <th className="text-end">Amount</th>
+                          <th>Method</th>
+                          <th>Loan #</th>
+                          <th>Product</th>
+                          <th>Ref</th>
+                          <th>Received By</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(menuData.payments || []).length === 0 && (
+                          <tr><td colSpan={8} className="text-center text-muted py-3">No payments recorded for this customer.</td></tr>
+                        )}
+                        {(menuData.payments || []).map((p) => {
+                          const lnum = (menuData.loans || []).find((lo) => String(lo._id) === String(p.loan))?.loanNumber || '-'
+                          return (
+                            <tr key={p._id}>
+                              <td className="small fw-semibold">{p.paymentNumber}</td>
+                              <td className="small">{new Date(p.createdAt).toLocaleString()}</td>
+                              <td className="text-end small fw-semibold text-success">{formatMoney(p.amount)}</td>
+                              <td className="small"><StatusBadge value={p.method} /></td>
+                              <td className="small"><code>{lnum}</code></td>
+                              <td className="small">{p.loanItemName || <span className="text-muted">All / multiple</span>}</td>
+                              <td className="small">{p.reference || '-'}</td>
+                              <td className="small">{p.receivedBy?.fullName || '-'}</td>
                             </tr>
-                          </thead>
-                          <tbody>
-                            {allPayments.length === 0 && (
-                              <tr><td colSpan={6} className="text-center text-muted py-3">No payment records.</td></tr>
-                            )}
-                            {allPayments.map((p, i) => (
-                              <tr key={i}>
-                                <td className="small"><code>{p.loanNumber}</code></td>
-                                <td className="small fw-medium">{p.productName}</td>
-                                <td className="text-end small">{formatMoney((Number(p.amount) || 0) + p.remaining)}</td>
-                                <td className="text-end small fw-semibold text-success">{formatMoney(p.amount)}</td>
-                                <td className="text-end small fw-semibold text-danger">{formatMoney(p.remaining)}</td>
-                                <td className="text-center"><StatusBadge value={p.status} /></td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </Table>
-                      )
-                    })()}
+                          )
+                        })}
+                      </tbody>
+                    </Table>
                   </div>
                 </>
               )}

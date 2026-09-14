@@ -35,10 +35,14 @@ exports.list = wrapAsync(async (req, res) => {
     _id: '$customer',
     customerName: { $first: '$customerName' },
     customerPhone: { $first: '$customerPhone' },
+    loanNumber: { $first: '$loanNumber' },
+    status: { $first: '$status' },
+    dueDate: { $first: '$dueDate' },
     loanCount: { $sum: 1 },
     totalAmount: { $sum: '$totalAmount' },
     amountPaid: { $sum: '$amountPaid' },
     outstandingBalance: { $sum: '$outstandingBalance' },
+    productCount: { $sum: { $size: { $ifNull: ['$items', []] } } },
     latestCreatedAt: { $max: '$createdAt' }
   };
 

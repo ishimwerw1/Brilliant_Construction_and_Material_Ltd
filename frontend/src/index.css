@@ -663,3 +663,43 @@ main .card:not(.stat-card):hover { box-shadow: 0 4px 16px rgba(16, 42, 67, 0.1);
   margin-bottom: 0.5rem;
   opacity: 0.35;
 }
+
+/* ============================================================
+   LOAN MODULE ANIMATIONS (menus, item rows, detail modals)
+   ============================================================ */
+
+/* Per-item ⋮ menu toggle */
+.loan-item-menu .dropdown-toggle {
+  transition: transform 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .loan-item-menu .dropdown-toggle:hover { color: var(--bcml-primary); transform: rotate(90deg); }
+}
+.loan-item-menu .dropdown-toggle:active { transform: scale(0.92); }
+
+/* Dropdown menu pop-in (scale + fade, anchored to the toggle corner) */
+.loan-menu-pop {
+  animation: bcml-pop 0.22s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+  transform-origin: top right;
+}
+@media (max-width: 575.98px) {
+  .loan-menu-pop { transform-origin: top left; }
+}
+
+/* Item detail modal slides up with a soft fade */
+.loan-detail-modal.show .modal-dialog { animation: bcml-fade-up 0.28s ease both; }
+
+/* Item rows give a subtle press + row highlight for touch/desktop */
+.loan-row {
+  transition: background-color 0.15s ease, transform 0.12s ease;
+}
+.loan-row:active { transform: scale(0.995); }
+
+/* Staggered fade for the payment history rows inside the detail modal */
+.loan-detail-modal .table tbody tr { animation-duration: 0.22s; }
+
+/* Mobile: full-width dropdown menus in tables are easier to tap */
+@media (max-width: 575.98px) {
+  .loan-menu-pop { min-width: 200px; }
+  .loan-menu-pop .dropdown-item { padding-top: 0.6rem; padding-bottom: 0.6rem; }
+}

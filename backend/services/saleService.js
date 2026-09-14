@@ -272,17 +272,33 @@ const createSale = async ({ payload, user }) => {
       if (balance > 0) {
         const loanNumber = await nextSequence('loanNumber', 'LN', session);
         const finalDueDate = dueDate ? new Date(dueDate) : new Date(Date.now() + (settings.defaultDueDays || 30) * 86400000);
-        const loanItems = saleItems.map((i) => {
-          const itemTotal = i.quantity * i.unitPrice;
+        // Any down payment is allocated proportionally across the loan products so the loan's
+        // per-product financials (amountPaid / outstandingBalance) add up to the loan totals from
+        // day one. Otherwise the first product-level repayment would silently drop the initial
+        // payment out of the loan aggregates (sum of item amountPaid would not include it).
+        let remainingDown = paidAmount;
+        const loanItems = saleItems.map((i, idx) => {
+          const itemTotal = round2(i.quantity * i.unitPrice);
+          const isLast = idx === saleItems.length - 1;
+          let itemPaid = 0;
+          if (remainingDown > 0) {
+            const share = total > 0 ? Math.min(1, paidAmount / total) : 0;
+            itemPaid = isLast
+              ? remainingDown
+              : round2(Math.min(remainingDown, itemTotal * share));
+            itemPaid = round2(Math.max(0, Math.min(itemPaid, itemTotal)));
+            remainingDown = round2(remainingDown - itemPaid);
+          }
+          const itemOutstanding = round2(Math.max(0, itemTotal - itemPaid));
           return {
             product: i.product,
             productName: i.productName,
             quantity: i.quantity,
             unitPrice: i.unitPrice,
             totalAmount: itemTotal,
-            amountPaid: 0,
-            outstandingBalance: itemTotal,
-            status: 'ACTIVE'
+            amountPaid: itemPaid,
+            outstandingBalance: itemOutstanding,
+            status: computeItemStatus(itemTotal, itemPaid)
           };
         });
         await Loan.create(

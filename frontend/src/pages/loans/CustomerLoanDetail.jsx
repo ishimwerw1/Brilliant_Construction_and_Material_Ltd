@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Card, Row, Col, Table, Button, Alert, Modal, Form, Badge } from 'react-bootstrap'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api, { getError } from '../../api/client'
 import Loading from '../../components/common/Loading'
 import StatusBadge from '../../components/common/StatusBadge'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
+import LoanItemActions from '../../components/loans/LoanItemActions'
 import { formatMoney } from '../../context/LanguageContext'
 import { useAuth } from '../../context/AuthContext'
 
@@ -13,6 +14,7 @@ const OPEN_STATUSES = ['ACTIVE', 'PARTIALLY_PAID', 'OVERDUE']
 export default function CustomerLoanDetail() {
   const { customerId } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { hasPermission } = useAuth()
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
@@ -47,6 +49,13 @@ export default function CustomerLoanDetail() {
       .catch((e) => { setError(getError(e)); setData(null) })
   }
   useEffect(load, [customerId])
+
+  useEffect(() => {
+    if (searchParams.get('print') === '1') {
+      const timer = setTimeout(() => window.print(), 500)
+      return () => clearTimeout(timer)
+    }
+  }, [searchParams])
 
   // Build flat item list from all loans
   const allItems = useMemo(() => {
@@ -319,19 +328,16 @@ export default function CustomerLoanDetail() {
                     <td className="text-end small fw-semibold">{formatMoney(Number(item.outstandingBalance) || 0)}</td>
                     <td className="text-center"><StatusBadge value={item.status} /></td>
                     <td className="text-end no-print">
-                      <div className="d-flex gap-1 justify-content-end">
-                        {canRepay && Number(item.outstandingBalance) > 0 && (
-                          <Button size="sm" variant="outline-success" onClick={() => startItemPay(r.loan, item, r.itemIndex)} title="Pay">
-                            <i className="bi bi-cash-stack" />
-                          </Button>
-                        )}
-                        <Button size="sm" variant="outline-primary" onClick={() => startEdit(r.loan, item, r.itemIndex)} title="Edit">
-                          <i className="bi bi-pencil" />
-                        </Button>
-                        <Button size="sm" variant="outline-danger" onClick={() => startReturn(r.loan, item, r.itemIndex)} title="Return">
-                          <i className="bi bi-arrow-return-left" />
-                        </Button>
-                      </div>
+                      <LoanItemActions
+                        loan={r.loan}
+                        item={item}
+                        itemIndex={r.itemIndex}
+                        canRepay={canRepay}
+                        canRemove={hasPermission('loans.cancel')}
+                        onPay={startItemPay}
+                        onEdit={startEdit}
+                        onRemove={startReturn}
+                      />
                     </td>
                   </tr>
                 )
