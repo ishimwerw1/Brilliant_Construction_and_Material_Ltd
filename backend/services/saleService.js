@@ -43,12 +43,59 @@ const recomputeLoanFromItems = (loan) => {
   else loan.status = 'ACTIVE';
 };
 
+const NORM_EPS = 0.001;
+
+/**
+ * Repairs legacy loans whose items were stored without per-product financials
+ * (totalAmount / amountPaid / outstandingBalance left at the schema default of 0) even though
+ * the loan itself carries the real debt. Only runs when EVERY active item is missing its
+ * figures; it rebuilds each item's totalAmount from quantity x unitPrice and spreads the loan's
+ * recorded amountPaid proportionally across the items (the last item absorbs rounding) so the
+ * per-item financials reconcile with the loan totals. Once repaired, per-product pay / edit /
+ * remove and whole-loan recomputation all behave correctly. Returns true when anything changed.
+ */
+const normalizeLegacyItems = (loan) => {
+  const items = loan.items || [];
+  const active = (it) => {
+    const s = it.status || 'ACTIVE';
+    return s !== 'PAID' && s !== 'REMOVED' && s !== 'CANCELLED';
+  };
+  const activeItems = items.filter(active);
+  if (activeItems.length === 0) return false;
+  if (['PAID', 'CANCELLED'].includes(loan.status)) return false;
+  const broken = (it) => Number(it.totalAmount) <= NORM_EPS || Number(it.outstandingBalance) <= NORM_EPS;
+  if (!activeItems.every(broken)) return false;
+
+  const weight = (it) => Math.max(0, Number(it.totalAmount) || (Number(it.quantity) * Number(it.unitPrice)) || 0);
+  const total = round2(activeItems.reduce((s, it) => s + weight(it), 0));
+  const loanPaid = round2(Math.max(0, Number(loan.amountPaid) || 0));
+  let remaining = loanPaid;
+
+  activeItems.forEach((it, idx) => {
+    const isLast = idx === activeItems.length - 1;
+    const t = round2(weight(it));
+    const share = total > 0 ? Math.min(1, loanPaid / total) : 0;
+    let paid = remaining > 0 ? round2(Math.min(remaining, isLast ? remaining : t * share)) : 0;
+    paid = round2(Math.max(0, Math.min(paid, t)));
+    it.totalAmount = t;
+    it.amountPaid = paid;
+    it.outstandingBalance = round2(Math.max(0, t - paid));
+    it.status = computeItemStatus(t, paid);
+    it.updatedAt = new Date();
+    remaining = round2(remaining - paid);
+  });
+
+  recomputeLoanFromItems(loan);
+  return true;
+};
+
 /**
  * Applies a payment amount across the loan's active items (unpaid items first, in order).
  * Updates each touched item's amountPaid / outstandingBalance / status, then recomputes the loan
  * aggregates. Returns the amount actually applied.
  */
 const applyPaymentToLoanItems = (loan, amount) => {
+  normalizeLegacyItems(loan);
   let remaining = amount;
   for (const it of loan.items) {
     if (remaining <= 0.001) break;
@@ -732,6 +779,7 @@ const repayLoanItem = async ({ loanId, loanItemIndex, amount, method, reference,
       if ((item.status || 'ACTIVE') === 'REMOVED') {
         throw new ApiError(400, `"${item.productName}" was returned/removed and cannot receive payments.`);
       }
+      normalizeLegacyItems(loan);
       const due = Number(item.outstandingBalance) || 0;
       if (due <= 0.001) throw new ApiError(400, `"${item.productName}" is already fully paid.`);
       if (payAmount > due + 0.001) {
@@ -850,6 +898,8 @@ const removeLoanItem = async ({ loanId, loanItemIndex, reason, user }) => {
       const item = loan.items[idx];
       if ((item.status || 'ACTIVE') === 'REMOVED') throw new ApiError(400, `"${item.productName}" is already returned/removed.`);
 
+      normalizeLegacyItems(loan);
+
       const writeOff = Number(item.outstandingBalance) || 0;
       const paidBack = Number(item.amountPaid) || 0;
       const previousBalance = Number(loan.outstandingBalance) || 0;
@@ -931,6 +981,7 @@ const updateLoanItem = async ({ loanId, loanItemIndex, updates, user }) => {
       if (!quantity || quantity <= 0) throw new ApiError(400, 'Invalid quantity.');
       if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new ApiError(400, 'Invalid price.');
 
+      normalizeLegacyItems(loan);
       const paidSoFar = Number(item.amountPaid) || 0;
       const newTotal = round2(quantity * unitPrice);
 
@@ -1054,4 +1105,4 @@ const deleteSale = async ({ saleId, user }) => {
   }
 };
 
-module.exports = { createSale, cancelSale, repayLoan, repayCustomerLoans, repayLoanItem, removeLoanItem, updateLoanItem, deleteSale, removeSaleRecord, round2, computeItemStatus };
+module.exports = { createSale, cancelSale, repayLoan, repayCustomerLoans, repayLoanItem, removeLoanItem, updateLoanItem, deleteSale, removeSaleRecord, round2, computeItemStatus, normalizeLegacyItems, recomputeLoanFromItems };

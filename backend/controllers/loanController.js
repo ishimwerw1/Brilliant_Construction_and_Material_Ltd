@@ -1,6 +1,6 @@
 const Loan = require('../models/Loan');
 const ApiError = require('../utils/ApiError');
-const { repayLoan, repayCustomerLoans, repayLoanItem, removeLoanItem, updateLoanItem } = require('../services/saleService');
+const { repayLoan, repayCustomerLoans, repayLoanItem, removeLoanItem, updateLoanItem, normalizeLegacyItems } = require('../services/saleService');
 const { logAction, ACTIONS } = require('../services/auditService');
 const { wrapAsync } = require('../middleware/errorHandler');
 
@@ -271,6 +271,7 @@ exports.updateDueDate = wrapAsync(async (req, res) => {
 exports.getItem = wrapAsync(async (req, res) => {
   const loan = await Loan.findById(req.params.id).populate('customer', 'name phone email address');
   if (!loan) throw new ApiError(404, 'Loan not found.');
+  if (normalizeLegacyItems(loan)) await loan.save();
   const idx = Number(req.params.itemIndex);
   if (!Number.isInteger(idx) || idx < 0 || idx >= (loan.items || []).length) {
     throw new ApiError(400, 'Invalid loan item index.');

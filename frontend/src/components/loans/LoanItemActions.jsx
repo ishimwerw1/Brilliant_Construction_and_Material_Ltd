@@ -14,11 +14,10 @@ export default function LoanItemActions({ loan, item, itemIndex, canRepay, canRe
   const [showMark, setShowMark] = useState(false)
   const [savingMark, setSavingMark] = useState(false)
   const [markError, setMarkError] = useState('')
+  const [payLoading, setPayLoading] = useState(false)
+  const [payAmount, setPayAmount] = useState(0)
 
   const itemTotal = Number(item.totalAmount) || (Number(item.quantity) * Number(item.unitPrice)) || 0
-  const outstanding = (item.outstandingBalance == null || item.outstandingBalance === '')
-    ? Math.max(0, itemTotal - (Number(item.amountPaid) || 0))
-    : Math.max(0, Number(item.outstandingBalance) || 0)
   const itemStatus = item.status || 'ACTIVE'
   const notPayable = itemStatus === 'PAID' || itemStatus === 'REMOVED'
 
@@ -38,12 +37,12 @@ export default function LoanItemActions({ loan, item, itemIndex, canRepay, canRe
   }
 
   const markPaid = async () => {
-    if (!outstanding) return
+    if (!payAmount || payAmount <= 0) return
     setSavingMark(true)
     setMarkError('')
     try {
       const { data } = await api.post(`/loans/${String(loan._id)}/items/${itemIndex}/pay`, {
-        amount: outstanding,
+        amount: payAmount,
         method: 'CASH',
         notes: 'Marked as fully paid (single product)'
       })
@@ -58,9 +57,24 @@ export default function LoanItemActions({ loan, item, itemIndex, canRepay, canRe
     }
   }
 
+  const openPay = async () => {
+    setMarkError('')
+    setShowMark(true)
+    setPayLoading(true)
+    setPayAmount(0)
+    try {
+      const { data } = await api.get(`/loans/${String(loan._id)}/items/${itemIndex}`)
+      setPayAmount(Math.max(0, Number(data.data.item.outstandingBalance) || 0))
+    } catch (err) {
+      setMarkError(getError(err))
+    } finally {
+      setPayLoading(false)
+    }
+  }
+
   const items = [
     { key: 'details', icon: 'bi-eye text-primary', label: 'View Details & History', onClick: openDetails },
-    canRepay && !notPayable && { key: 'pay', icon: 'bi-check2-circle text-success', label: 'Pay product', onClick: () => { setMarkError(''); setShowMark(true) } },
+    canRepay && !notPayable && { key: 'pay', icon: 'bi-check2-circle text-success', label: 'Pay product', onClick: openPay },
     canRepay && !notPayable && { key: 'partial', icon: 'bi-cash-stack text-success', label: 'Record partial payment', onClick: () => onPay(loan, item, itemIndex) },
     { key: 'edit', icon: 'bi-pencil text-warning', label: 'Edit Product', onClick: () => onEdit(loan, item, itemIndex) },
     canRemove && itemStatus !== 'REMOVED'
@@ -132,22 +146,32 @@ export default function LoanItemActions({ loan, item, itemIndex, canRepay, canRe
         </Modal.Body>
       </Modal>
 
-      <Modal show={showMark} onHide={() => !savingMark && setShowMark(false)} centered backdrop="static">
-        <Modal.Header closeButton={!savingMark}>
+      <Modal show={showMark} onHide={() => !savingMark && !payLoading && setShowMark(false)} centered backdrop="static">
+        <Modal.Header closeButton={!savingMark && !payLoading}>
           <Modal.Title className="fs-6 fw-bold">Pay Product — "{item.productName}"</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {markError && <Alert variant="danger" dismissible onClose={() => setMarkError('')} className="py-2 small">{markError}</Alert>}
-          <Alert variant="info" className="py-2 small">
-            Records a payment of <strong>{formatMoney(outstanding)}</strong> for this product only.
-            Its status will change to <strong>paid</strong> and the loan's total debt will drop by that amount.
-            All other products on the loan stay unpaid.
-          </Alert>
+          {payLoading ? (
+            <div className="text-center py-4 text-muted">
+              <Spinner size="sm" className="me-2" />Checking this product's outstanding balance...
+            </div>
+          ) : payAmount <= 0 ? (
+            <Alert variant="info" className="py-2 small">
+              This product has no remaining balance on the loan — it is already fully paid.
+            </Alert>
+          ) : (
+            <Alert variant="info" className="py-2 small">
+              Records a payment of <strong>{formatMoney(payAmount)}</strong> for this product only.
+              Its status will change to <strong>paid</strong> and the loan's total debt will drop by that amount.
+              All other products on the loan stay unpaid.
+            </Alert>
+          )}
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="light" type="button" disabled={savingMark} onClick={() => setShowMark(false)}>Cancel</Button>
-          <Button type="submit" variant="success" disabled={savingMark || !outstanding} onClick={markPaid}>
-            {savingMark ? <><Spinner size="sm" className="me-1" />Saving...</> : <><i className="bi bi-check2-circle me-1" />Pay {formatMoney(outstanding)}</>}
+          <Button variant="light" type="button" disabled={savingMark || payLoading} onClick={() => setShowMark(false)}>Cancel</Button>
+          <Button type="submit" variant="success" disabled={savingMark || payLoading || payAmount <= 0} onClick={markPaid}>
+            {savingMark ? <><Spinner size="sm" className="me-1" />Saving...</> : <><i className="bi bi-check2-circle me-1" />Pay {formatMoney(payAmount)}</>}
           </Button>
         </Modal.Footer>
       </Modal>
