@@ -112,6 +112,7 @@ const createSale = async ({ payload, user }) => {
         notes,
         order,
         onDemand,
+        itemPaid,
         saleType = 'NORMAL',
         deductStock = true,
         skipStockCheck = false,
@@ -272,35 +273,65 @@ const createSale = async ({ payload, user }) => {
       if (balance > 0) {
         const loanNumber = await nextSequence('loanNumber', 'LN', session);
         const finalDueDate = dueDate ? new Date(dueDate) : new Date(Date.now() + (settings.defaultDueDays || 30) * 86400000);
-        // Any down payment is allocated proportionally across the loan products so the loan's
-        // per-product financials (amountPaid / outstandingBalance) add up to the loan totals from
-        // day one. Otherwise the first product-level repayment would silently drop the initial
-        // payment out of the loan aggregates (sum of item amountPaid would not include it).
-        let remainingDown = paidAmount;
-        const loanItems = saleItems.map((i, idx) => {
-          const itemTotal = round2(i.quantity * i.unitPrice);
-          const isLast = idx === saleItems.length - 1;
-          let itemPaid = 0;
-          if (remainingDown > 0) {
-            const share = total > 0 ? Math.min(1, paidAmount / total) : 0;
-            itemPaid = isLast
-              ? remainingDown
-              : round2(Math.min(remainingDown, itemTotal * share));
-            itemPaid = round2(Math.max(0, Math.min(itemPaid, itemTotal)));
-            remainingDown = round2(remainingDown - itemPaid);
+        // Any down payment is allocated across the loan products so the loan's per-product
+        // financials (amountPaid / outstandingBalance) add up to the loan totals from day one.
+        // The caller may pass explicit per-item amounts (itemPaid[]) instead so a specific
+        // product can be marked fully/partially paid at checkout while the others stay unpaid.
+        let loanItems;
+        const hasExplicitAllocation = itemPaid !== undefined && itemPaid !== null;
+        if (hasExplicitAllocation && (!Array.isArray(itemPaid) || itemPaid.length !== saleItems.length)) {
+          throw new ApiError(400, 'Per-item "paid now" amounts must match the number of cart products.');
+        }
+        if (hasExplicitAllocation) {
+          const paidPerItem = itemPaid.map((v) => round2(Math.max(0, Number(v) || 0)));
+          const paidSum = round2(paidPerItem.reduce((s, v) => s + v, 0));
+          if (Math.abs(paidSum - paidAmount) > 0.01) {
+            throw new ApiError(400, 'Per-item "paid now" amounts must add up to the total amount paid for the sale.');
           }
-          const itemOutstanding = round2(Math.max(0, itemTotal - itemPaid));
-          return {
-            product: i.product,
-            productName: i.productName,
-            quantity: i.quantity,
-            unitPrice: i.unitPrice,
-            totalAmount: itemTotal,
-            amountPaid: itemPaid,
-            outstandingBalance: itemOutstanding,
-            status: computeItemStatus(itemTotal, itemPaid)
-          };
-        });
+          loanItems = saleItems.map((i, idx) => {
+            const itemTotal = round2(i.quantity * i.unitPrice);
+            if (paidPerItem[idx] > itemTotal + 0.001) {
+              throw new ApiError(400, `"Paid now" for "${i.productName}" cannot exceed its total of ${itemTotal.toLocaleString()} RWF.`);
+            }
+            const paid = round2(Math.min(paidPerItem[idx], itemTotal));
+            return {
+              product: i.product,
+              productName: i.productName,
+              quantity: i.quantity,
+              unitPrice: i.unitPrice,
+              totalAmount: itemTotal,
+              amountPaid: paid,
+              outstandingBalance: round2(Math.max(0, itemTotal - paid)),
+              status: computeItemStatus(itemTotal, paid)
+            };
+          });
+        } else {
+          let remainingDown = paidAmount;
+          loanItems = saleItems.map((i, idx) => {
+            const itemTotal = round2(i.quantity * i.unitPrice);
+            const isLast = idx === saleItems.length - 1;
+            let itemPaid = 0;
+            if (remainingDown > 0) {
+              const share = total > 0 ? Math.min(1, paidAmount / total) : 0;
+              itemPaid = isLast
+                ? remainingDown
+                : round2(Math.min(remainingDown, itemTotal * share));
+              itemPaid = round2(Math.max(0, Math.min(itemPaid, itemTotal)));
+              remainingDown = round2(remainingDown - itemPaid);
+            }
+            const itemOutstanding = round2(Math.max(0, itemTotal - itemPaid));
+            return {
+              product: i.product,
+              productName: i.productName,
+              quantity: i.quantity,
+              unitPrice: i.unitPrice,
+              totalAmount: itemTotal,
+              amountPaid: itemPaid,
+              outstandingBalance: itemOutstanding,
+              status: computeItemStatus(itemTotal, itemPaid)
+            };
+          });
+        }
         await Loan.create(
           [
             {

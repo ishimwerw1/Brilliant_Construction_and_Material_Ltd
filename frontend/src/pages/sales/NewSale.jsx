@@ -27,6 +27,7 @@ export default function NewSale() {
   const [paymentMethod, setPaymentMethod] = useState('CASH')
   const [amountPaidInput, setAmountPaidInput] = useState('')
   const [payFull, setPayFull] = useState(true)
+  const [itemPaid, setItemPaid] = useState({})
   const [paymentReference, setPaymentReference] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [notes, setNotes] = useState('')
@@ -79,6 +80,38 @@ export default function NewSale() {
     ? (isCreditType ? 0 : total)
     : Math.min(Math.max(0, Number(amountPaidInput || 0)), maxPaid)
   const balance = Math.max(0, total - amountPaid)
+
+  const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100
+  const lineRevenue = (item) => r2(item.quantity * item.unitPrice - item.discount)
+
+  const showItemAllocation = isCreditType && !payFull && amountPaid > 0
+  const itemPaidList = showItemAllocation
+    ? cart.map((item) => Math.max(0, Math.min(Number(itemPaid[item.product] || 0), lineRevenue(item))))
+    : undefined
+  const allocatedSum = itemPaidList ? r2(itemPaidList.reduce((s, v) => s + v, 0)) : amountPaid
+  const allocationMismatch = itemPaidList ? Math.abs(allocatedSum - amountPaid) > 0.01 : false
+
+  const setItemPaidClamped = (product, value) => {
+    const item = cart.find((i) => i.product === product)
+    const max = item ? lineRevenue(item) : 0
+    const v = r2(Math.max(0, Math.min(Number(value) || 0, max)))
+    setItemPaid((prev) => ({ ...prev, [product]: v }))
+  }
+
+  const distributeEvenly = () => {
+    const revs = cart.map(lineRevenue)
+    const revSum = revs.reduce((s, v) => s + v, 0) || 1
+    const next = {}
+    let remaining = r2(amountPaid)
+    cart.forEach((item, idx) => {
+      const isLast = idx === cart.length - 1
+      const share = Math.min(1, amountPaid / revSum)
+      const p = isLast ? remaining : r2(Math.min(remaining, revs[idx] * share))
+      next[item.product] = r2(Math.max(0, Math.min(p, revs[idx])))
+      remaining = r2(remaining - next[item.product])
+    })
+    setItemPaid(next)
+  }
 
   const addToCart = (p) => {
     setError('')
@@ -139,6 +172,10 @@ export default function NewSale() {
     setSaving(true)
     setError('')
     try {
+      if (allocationMismatch) {
+        setError(`Product "Paid now" amounts (${formatMoney(allocatedSum)}) must add up to the amount paid (${formatMoney(amountPaid)}).`)
+        return
+      }
       const payload = {
         customer: customer?._id,
         customerName: customer ? undefined : newCustomer.name,
@@ -149,7 +186,8 @@ export default function NewSale() {
         paymentMethod,
         paymentReference: paymentReference || undefined,
         dueDate: balance > 0 ? dueDate || undefined : undefined,
-        notes: notes || undefined
+        notes: notes || undefined,
+        ...(itemPaidList ? { itemPaid: itemPaidList } : {})
       }
       const { data } = await api.post('/sales', payload)
       setCompletedSale(data.data.sale)
@@ -166,7 +204,7 @@ export default function NewSale() {
     setCompletedSale(null)
     setCart([]); setDiscount(0); setPaymentMethod('CASH'); setAmountPaidInput(''); setPayFull(true)
     setPaymentReference(''); setDueDate(''); setNotes(''); setCustomer(null)
-    setNewCustomer({ name: '', phone: '' }); setCustomerQuery(''); setError('')
+    setNewCustomer({ name: '', phone: '' }); setCustomerQuery(''); setError(''); setItemPaid({})
   }
 
   /* ---------- Success screen ---------- */
@@ -298,7 +336,7 @@ export default function NewSale() {
           <Card className="sticky-top" style={{ top: 76 }}>
             <Card.Header className="bg-white d-flex justify-content-between align-items-center">
               <span className="fw-semibold"><i className="bi bi-cart3 me-2" />Cart ({cart.length})</span>
-              {cart.length > 0 && <Button variant="link" size="sm" className="p-0 text-danger text-decoration-none" onClick={() => setCart([])}>clear</Button>}
+              {cart.length > 0 && <Button variant="link" size="sm" className="p-0 text-danger text-decoration-none" onClick={() => { setCart([]); setItemPaid({}) }}>clear</Button>}
             </Card.Header>
             <Card.Body style={{ maxHeight: 340, overflowY: 'auto' }}>
               {cart.length === 0 ? (
@@ -353,6 +391,23 @@ export default function NewSale() {
                         {lineProfit >= 0 ? '+' : ''}{formatMoney(lineProfit)} profit
                       </Badge>
                     </div>
+
+                    {showItemAllocation && (
+                      <div className="d-flex align-items-center gap-2 mt-1 bg-light border rounded p-1">
+                        <span className="small text-muted" style={{ fontSize: '0.72rem' }}>Paid now</span>
+                        <InputGroup size="sm">
+                          <InputGroup.Text style={{ fontSize: '0.72rem' }}>RWF</InputGroup.Text>
+                          <Form.Control
+                            size="sm" type="number" min="0" step="0.01"
+                            value={itemPaid[item.product] ?? 0}
+                            onChange={(e) => setItemPaidClamped(item.product, e.target.value)}
+                          />
+                        </InputGroup>
+                        <Button size="sm" variant="outline-success" className="text-nowrap px-2 py-0" onClick={() => setItemPaidClamped(item.product, lineRevenue)}>
+                          <i className="bi bi-check2-circle me-1" />Full
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -420,6 +475,18 @@ export default function NewSale() {
                     ? `Paying ${formatMoney(amountPaid)} now leaves a credit balance of ${formatMoney(balance)} - a loan record will be created.`
                     : 'Fully paid - no credit will be created.'}
                 </Form.Text>
+                {showItemAllocation && (
+                  <div className="d-flex align-items-center justify-content-between gap-2 mt-1">
+                    <small className={allocationMismatch ? 'text-danger fw-semibold' : 'text-muted'} style={{ fontSize: '0.72rem' }}>
+                      {allocationMismatch
+                        ? `Product "Paid now" total is ${formatMoney(allocatedSum)}, must equal ${formatMoney(amountPaid)}`
+                        : `Product "Paid now" split: ${formatMoney(allocatedSum)} of ${formatMoney(amountPaid)} allocated`}
+                    </small>
+                    <Button size="sm" variant="outline-secondary" className="px-2 py-0 text-nowrap" onClick={distributeEvenly} disabled={!cart.length || balance < 0}>
+                      <i className="bi bi-diagram-3 me-1" />Distribute evenly
+                    </Button>
+                  </div>
+                )}
               </Form.Group>
 
               {balance > 0 && (
@@ -443,7 +510,7 @@ export default function NewSale() {
                 <Form.Control size="sm" placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
               </Form.Group>
 
-              <Button className="w-100 py-2 fw-semibold" disabled={cart.length === 0 || saving} onClick={() => setConfirming(true)}>
+              <Button className="w-100 py-2 fw-semibold" disabled={cart.length === 0 || saving || allocationMismatch} onClick={() => setConfirming(true)}>
                 <i className="bi bi-check-circle me-1" />Complete Sale — {formatMoney(total)}
               </Button>
             </Card.Footer>
@@ -464,6 +531,15 @@ export default function NewSale() {
               <tr><td className="text-muted">Total</td><td className="text-end fw-bold">{formatMoney(total)}</td></tr>
               <tr><td className="text-muted">Payment Method</td><td className="text-end">{paymentMethod}</td></tr>
               <tr><td className="text-muted">Amount Paid</td><td className="text-end">{formatMoney(amountPaid)}</td></tr>
+              {itemPaidList && (
+                <tr>
+                  <td className="text-muted">Paid per product</td>
+                  <td className="text-end small">
+                    {cart.map((item, idx) => itemPaidList[idx] > 0 ? `${item.productName}: ${formatMoney(itemPaidList[idx])}` : null)
+                      .filter(Boolean).join(' · ') || '—'}
+                  </td>
+                </tr>
+              )}
               {balance > 0 && (
                 <tr className="table-warning"><td className="text-muted">Credit Balance</td><td className="text-end fw-bold text-danger">{formatMoney(balance)}</td></tr>
               )}
