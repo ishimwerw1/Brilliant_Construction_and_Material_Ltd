@@ -16,7 +16,11 @@ export default function LoanItemActions({ loan, item, itemIndex, canRepay, canRe
   const [markError, setMarkError] = useState('')
 
   const itemTotal = Number(item.totalAmount) || (Number(item.quantity) * Number(item.unitPrice)) || 0
-  const outstanding = Number(item.outstandingBalance) || 0
+  const outstanding = (item.outstandingBalance == null || item.outstandingBalance === '')
+    ? Math.max(0, itemTotal - (Number(item.amountPaid) || 0))
+    : Math.max(0, Number(item.outstandingBalance) || 0)
+  const itemStatus = item.status || 'ACTIVE'
+  const notPayable = itemStatus === 'PAID' || itemStatus === 'REMOVED'
 
   const openDetails = async () => {
     setDetails(null)
@@ -56,10 +60,10 @@ export default function LoanItemActions({ loan, item, itemIndex, canRepay, canRe
 
   const items = [
     { key: 'details', icon: 'bi-eye text-primary', label: 'View Details & History', onClick: openDetails },
-    canRepay && outstanding > 0 && { key: 'pay', icon: 'bi-check2-circle text-success', label: 'Pay product', onClick: () => { setMarkError(''); setShowMark(true) } },
-    canRepay && outstanding > 0 && { key: 'partial', icon: 'bi-cash-stack text-success', label: 'Record partial payment', onClick: () => onPay(loan, item, itemIndex) },
+    canRepay && !notPayable && { key: 'pay', icon: 'bi-check2-circle text-success', label: 'Pay product', onClick: () => { setMarkError(''); setShowMark(true) } },
+    canRepay && !notPayable && { key: 'partial', icon: 'bi-cash-stack text-success', label: 'Record partial payment', onClick: () => onPay(loan, item, itemIndex) },
     { key: 'edit', icon: 'bi-pencil text-warning', label: 'Edit Product', onClick: () => onEdit(loan, item, itemIndex) },
-    canRemove && (item.status || 'ACTIVE') !== 'REMOVED'
+    canRemove && itemStatus !== 'REMOVED'
       && { key: 'remove', icon: 'bi-x-circle', label: 'Remove / Cancel Item', danger: true, onClick: () => onRemove(loan, item, itemIndex) }
   ].filter(Boolean)
 
