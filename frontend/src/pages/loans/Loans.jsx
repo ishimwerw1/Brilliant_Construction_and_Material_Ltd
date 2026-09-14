@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Card, Row, Col, Form, Badge, Button, Modal, Alert, Table, Dropdown } from 'react-bootstrap'
+import { Card, Row, Col, Form, Badge, Button, Modal, Alert, Table } from 'react-bootstrap'
 import { Link, useNavigate } from 'react-router-dom'
 import api, { getError } from '../../api/client'
 import DataTable from '../../components/common/DataTable'
 import StatCard from '../../components/common/StatCard'
 import StatusBadge from '../../components/common/StatusBadge'
 import ConfirmDialog from '../../components/common/ConfirmDialog'
+import MoreMenu from '../../components/common/MoreMenu'
 import LoanItemActions from '../../components/loans/LoanItemActions'
 import { formatMoney } from '../../context/LanguageContext'
 import { useAuth } from '../../context/AuthContext'
@@ -369,37 +370,20 @@ export default function Loans() {
                     <i className="bi bi-cash-stack me-1" />Pay
                   </Button>
                 )}
-                <Dropdown align="end">
-                  <Dropdown.Toggle variant="light" size="sm" className="border-0 px-1" style={{ lineHeight: 1 }}>
-                    <i className="bi bi-three-dots-vertical fs-6" />
-                  </Dropdown.Toggle>
-                  <Dropdown.Menu className="shadow-sm" style={{ minWidth: 220 }}>
-                    <Dropdown.Header className="small fw-bold">Loan Management</Dropdown.Header>
-                    <Dropdown.Item as={Link} to={`/loans/customer/${String(c._id)}`}>
-                      <i className="bi bi-eye me-2 text-primary" />View Loan Details
-                    </Dropdown.Item>
-                    <Dropdown.Item as={Link} to={`/customers/${String(c._id)}`}>
-                      <i className="bi bi-pencil me-2 text-warning" />Edit Customer
-                    </Dropdown.Item>
-                    <Dropdown.Divider />
-                    <Dropdown.Item onClick={() => openMenuView(String(c._id), 'ALL')}>
-                      <i className="bi bi-collection me-2 text-info" />View All Products
-                    </Dropdown.Item>
-                    <Dropdown.Item onClick={() => openMenuView(String(c._id), 'PAID')}>
-                      <i className="bi bi-check-circle me-2 text-success" />View Paid Products
-                    </Dropdown.Item>
-                    <Dropdown.Item onClick={() => openMenuView(String(c._id), 'UNPAID')}>
-                      <i className="bi bi-exclamation-circle me-2 text-danger" />View Unpaid Products
-                    </Dropdown.Item>
-                    <Dropdown.Divider />
-                    <Dropdown.Item onClick={() => openMenuView(String(c._id), 'HISTORY')}>
-                      <i className="bi bi-clock-history me-2 text-secondary" />Payment History
-                    </Dropdown.Item>
-                    <Dropdown.Item onClick={() => navigate(`/loans/customer/${String(c._id)}?print=1`)}>
-                      <i className="bi bi-printer me-2 text-muted" />Print Loan Invoice
-                    </Dropdown.Item>
-                  </Dropdown.Menu>
-                </Dropdown>
+                <MoreMenu
+                  header={`Loan Management — ${c.customerName || 'Customer'}`}
+                  items={[
+                    { key: 'view', icon: 'bi-eye text-primary', label: 'View Loan Details', onClick: () => navigate(`/loans/customer/${String(c._id)}`) },
+                    { key: 'editC', icon: 'bi-pencil text-warning', label: 'Edit Customer', onClick: () => navigate(`/customers/${String(c._id)}`) },
+                    { divider: true },
+                    { key: 'all', icon: 'bi-collection text-info', label: 'View All Products', onClick: () => openMenuView(String(c._id), 'ALL') },
+                    { key: 'paid', icon: 'bi-check-circle text-success', label: 'View Paid Products', onClick: () => openMenuView(String(c._id), 'PAID') },
+                    { key: 'unpaid', icon: 'bi-exclamation-circle text-danger', label: 'View Unpaid Products', onClick: () => openMenuView(String(c._id), 'UNPAID') },
+                    { divider: true },
+                    { key: 'hist', icon: 'bi-clock-history text-secondary', label: 'Payment History', onClick: () => openMenuView(String(c._id), 'HISTORY') },
+                    { key: 'print', icon: 'bi-printer text-muted', label: 'Print Loan Invoice', onClick: () => navigate(`/loans/customer/${String(c._id)}?print=1`) }
+                  ]}
+                />
               </div>
             )}
           ]}

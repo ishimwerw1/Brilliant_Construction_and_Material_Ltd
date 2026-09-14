@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Dropdown, Modal, Alert, Table, Spinner, Row, Col, Card } from 'react-bootstrap'
+import { Modal, Alert, Table, Spinner, Row, Col, Card } from 'react-bootstrap'
 import api, { getError } from '../../api/client'
 import StatusBadge from '../common/StatusBadge'
+import MoreMenu from '../common/MoreMenu'
 import { formatMoney } from '../../context/LanguageContext'
 
 export default function LoanItemActions({ loan, item, itemIndex, canRepay, canRemove, onPay, onEdit, onRemove }) {
@@ -11,6 +12,7 @@ export default function LoanItemActions({ loan, item, itemIndex, canRepay, canRe
   const [error, setError] = useState('')
 
   const itemTotal = Number(item.totalAmount) || (Number(item.quantity) * Number(item.unitPrice)) || 0
+  const outstanding = Number(item.outstandingBalance) || 0
 
   const openDetails = async () => {
     setDetails(null)
@@ -27,35 +29,17 @@ export default function LoanItemActions({ loan, item, itemIndex, canRepay, canRe
     }
   }
 
+  const items = [
+    { key: 'details', icon: 'bi-eye text-primary', label: 'View Details & History', onClick: openDetails },
+    canRepay && outstanding > 0 && { key: 'pay', icon: 'bi-cash-stack text-success', label: 'Record Payment', onClick: () => onPay(loan, item, itemIndex) },
+    { key: 'edit', icon: 'bi-pencil text-warning', label: 'Edit Product', onClick: () => onEdit(loan, item, itemIndex) },
+    canRemove && (item.status || 'ACTIVE') !== 'REMOVED'
+      && { divider: true, key: 'remove', icon: 'bi-x-circle', label: 'Remove / Cancel Item', danger: true, onClick: () => onRemove(loan, item, itemIndex) }
+  ].filter(Boolean)
+
   return (
     <>
-      <Dropdown align="end" className="loan-item-menu">
-        <Dropdown.Toggle variant="light" size="sm" className="border-0 px-1" style={{ lineHeight: 1 }} title="Item actions">
-          <i className="bi bi-three-dots-vertical fs-6" />
-        </Dropdown.Toggle>
-        <Dropdown.Menu className="shadow-sm loan-menu-pop" style={{ minWidth: 200 }}>
-          <Dropdown.Header className="small fw-bold">{item.productName}</Dropdown.Header>
-          <Dropdown.Item onClick={openDetails}>
-            <i className="bi bi-eye me-2 text-primary" />View Details & History
-          </Dropdown.Item>
-          {canRepay && Number(item.outstandingBalance) > 0 && (
-            <Dropdown.Item onClick={() => onPay(loan, item, itemIndex)}>
-              <i className="bi bi-cash-stack me-2 text-success" />Record Payment
-            </Dropdown.Item>
-          )}
-          <Dropdown.Item onClick={() => onEdit(loan, item, itemIndex)}>
-            <i className="bi bi-pencil me-2 text-warning" />Edit Product
-          </Dropdown.Item>
-          {canRemove && (item.status || 'ACTIVE') !== 'REMOVED' && (
-            <>
-              <Dropdown.Divider />
-              <Dropdown.Item onClick={() => onRemove(loan, item, itemIndex)}>
-                <i className="bi bi-arrow-return-left me-2 text-danger" />Remove / Return
-              </Dropdown.Item>
-            </>
-          )}
-        </Dropdown.Menu>
-      </Dropdown>
+      <MoreMenu header={item.productName} items={items} />
 
       <Modal show={showDetails} onHide={() => setShowDetails(false)} size="lg" centered scrollable className="loan-detail-modal">
         <Modal.Header closeButton>
